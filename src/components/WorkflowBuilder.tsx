@@ -15,7 +15,9 @@ import {
 import 'reactflow/dist/style.css';
 import { WorkflowStep, ModelType, UserIntent, ThemeType } from '../types';
 import { auditIntent, stressTest, generateInstructionSet, generateWorkflow, getModelStrengths } from '../services/gemini';
-import { Play, Plus, Trash2, GitMerge, CheckCircle2, AlertCircle, RefreshCw, Wand2, LayoutTemplate, SplitSquareHorizontal } from 'lucide-react';
+import { Play, Plus, Trash2, GitMerge, CheckCircle2, AlertCircle, RefreshCw, Wand2, LayoutTemplate, SplitSquareHorizontal, Download } from 'lucide-react';
+import jsPDF from 'jspdf';
+import JSZip from 'jszip';
 
 const TEMPLATES = [
   {
@@ -202,8 +204,8 @@ export default function WorkflowBuilder() {
 
     let hasPending = true;
     while (hasPending) {
-      // Find steps ready to run (idle, and all dependencies are completed)
-      // AND also, ensure none of their dependencies failed. If a dependency failed, this step must also fail.
+// Find steps ready to run (idle, and all dependencies are completed)
+// AND also, ensure none of their dependencies failed. If a dependency failed, this step must also fail.
       const readySteps = currentSteps.filter(s => 
         s.status === 'idle' && 
         s.dependsOn.every(dep => completed.has(dep)) &&
@@ -294,6 +296,74 @@ export default function WorkflowBuilder() {
     setIsRunning(false);
   };
 
+  const exportToPDF = () => {
+    const doc = new jsPDF();
+    let y = 10;
+    
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("Workflow Execution Report", 10, y);
+    y += 10;
+
+    steps.filter(s => s.status === 'completed').forEach(s => {
+      if (y > 270) { doc.addPage(); y = 10; }
+      
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Step: ${s.name}`, 10, y);
+      y += 8;
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      
+      const splitIntent = doc.splitTextToSize(`Intent: ${s.intent}`, 190);
+      doc.text(splitIntent, 10, y);
+      y += (splitIntent.length * 5) + 5;
+      
+      if (s.result?.finalPrompt) {
+        if (y > 270) { doc.addPage(); y = 10; }
+        const splitResult = doc.splitTextToSize(`Output:\n${s.result.finalPrompt}`, 190);
+        
+        let startIdx = 0;
+        while (startIdx < splitResult.length) {
+          const linesPerPage = Math.floor((280 - y) / 5);
+          const block = splitResult.slice(startIdx, startIdx + linesPerPage);
+          doc.text(block, 10, y);
+          y += (block.length * 5);
+          startIdx += linesPerPage;
+          if (startIdx < splitResult.length) {
+            doc.addPage();
+            y = 10;
+          }
+        }
+      }
+      y += 10;
+    });
+    
+    doc.save("workflow-report.pdf");
+  };
+
+  const exportToZip = async () => {
+    const zip = new JSZip();
+    
+    steps.filter(s => s.status === 'completed').forEach(s => {
+      const content = `Step: ${s.name}\n\nIntent:\n${s.intent}\n\nTarget Model: ${s.targetModel}\n\nOutput:\n${s.result?.finalPrompt || ''}`;
+      // Clean filename
+      const filename = `${s.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`;
+      zip.file(filename, content);
+    });
+    
+    const content = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "workflow-outputs.zip";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-[#0f0f0f] border border-[#1a1a1a] p-4 rounded-sm gap-4">
@@ -319,6 +389,22 @@ export default function WorkflowBuilder() {
           >
             <Wand2 size={14} /> Auto-Generate
           </button>
+          {steps.some(s => s.status === 'completed') && (
+            <>
+              <button 
+                onClick={exportToPDF}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-[#1a1a1a] text-[#e0e0e0] text-xs font-bold uppercase hover:bg-[#222] transition-colors whitespace-nowrap"
+              >
+                <Download size={14} /> PDF
+              </button>
+              <button 
+                onClick={exportToZip}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-[#1a1a1a] text-[#e0e0e0] text-xs font-bold uppercase hover:bg-[#222] transition-colors whitespace-nowrap"
+              >
+                <Download size={14} /> ZIP
+              </button>
+            </>
+          )}
           <button 
             onClick={addStep}
             disabled={isRunning}

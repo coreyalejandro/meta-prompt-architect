@@ -23,6 +23,10 @@ export function scanForPII(text: string): PIIFinding[] {
 }
 
 // Essential: Model-Specific Reasoning Adapters
+function cleanJsonResponse(text: string) {
+  return text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+}
+
 export const getModelStrengths = (model: ModelType) => {
   switch (model) {
     case ModelType.GPT_5_PRO: return "Industry-leading complex reasoning and ecosystem integration.";
@@ -50,7 +54,7 @@ export const getModelStrengths = (model: ModelType) => {
 export async function auditIntent(intent: UserIntent, signal?: AbortSignal): Promise<AuditResult> {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Analyze this user intent for a prompt: "${intent.raw}". 
       Identify implicit assumptions, 3 critical edge cases, and the "Truth Surface" (required external data).`,
       config: {
@@ -71,18 +75,18 @@ export async function auditIntent(intent: UserIntent, signal?: AbortSignal): Pro
     const text = response.text;
     if (!text) throw new Error('Empty response from audit engine');
     
-    return AuditResultSchema.parse(JSON.parse(text));
+    return AuditResultSchema.parse(JSON.parse(cleanJsonResponse(text)));
   } catch (err: any) {
     console.error('Audit error:', err);
     if (err.message?.includes('429')) throw new Error('Capacity reached (Rate Limit). Please wait a moment.');
-    throw new Error('Environmental scan failed. The intent might be too complex for initial analysis.');
+    throw new Error(`Environmental scan failed: ${err.message || 'Unknown error'}`);
   }
 }
 
 export async function stressTest(intent: UserIntent, audit: AuditResult, signal?: AbortSignal): Promise<StressTestResult> {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Stress-test this intent: "${intent.raw}" based on these audit findings: ${JSON.stringify(audit)}.
       Provide a Critic's argument, Logic optimization, and a Resolution into a "Steel-man" instruction set.`,
       config: {
@@ -103,11 +107,11 @@ export async function stressTest(intent: UserIntent, audit: AuditResult, signal?
     const text = response.text;
     if (!text) throw new Error('Empty response from stress engine');
 
-    return StressTestResultSchema.parse(JSON.parse(text));
+    return StressTestResultSchema.parse(JSON.parse(cleanJsonResponse(text)));
   } catch (err: any) {
     console.error('Stress test error:', err);
     if (err.message?.includes('429')) throw new Error('Capacity reached (Rate Limit). Please wait a moment.');
-    throw new Error('Stress test failed. Try simplifying the intent and re-running the scan.');
+    throw new Error(`Stress test failed: ${err.message || 'Unknown error'}`);
   }
 }
 
@@ -127,7 +131,7 @@ export async function generateInstructionSet(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
+      model: "gemini-3-flash-preview",
       contents: `Generate a high-dimensional Instruction Set for intent: "${intent.raw}" using resolution: "${stress.resolution}".
       Target Model: ${intent.targetModel}. 
       Model-Specific Optimization: ${modelStrengths}
@@ -175,7 +179,7 @@ export async function generateInstructionSet(
     if (!text) throw new Error('Empty response from analysis engine');
     
     try {
-      const parsed = JSON.parse(text);
+      const parsed = JSON.parse(cleanJsonResponse(text));
       return InstructionSetSchema.parse(parsed);
     } catch (parseErr) {
       console.error('Failed to parse instruction set JSON:', text);
@@ -195,7 +199,7 @@ const RetrospectiveSchema = z.object({
 
 export async function getRetrospective(failedStep: string, signal?: AbortSignal): Promise<Retrospective> {
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-3-flash-preview",
     contents: `Analyze this failed step log: "${failedStep}". 
     Provide a failure reason and a suggested update to the BUILD_CONTRACT.template.md.`,
     config: {
@@ -212,7 +216,7 @@ export async function getRetrospective(failedStep: string, signal?: AbortSignal)
   });
 
   if (signal?.aborted) throw new Error('AbortError');
-  return RetrospectiveSchema.parse(JSON.parse(response.text));
+  return RetrospectiveSchema.parse(JSON.parse(cleanJsonResponse(response.text)));
 }
 
 const RedTeamSchema = z.object({
@@ -223,7 +227,7 @@ const RedTeamSchema = z.object({
 
 export async function chatWithExpert(message: string, context: any, signal?: AbortSignal): Promise<string> {
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-3-flash-preview",
     contents: `You are the Meta-Prompt Knowledge Expert. Your goal is to help users master high-dimensional prompt engineering and the Meta-Prompt Architect app.
     
     Context: ${JSON.stringify(context)}
@@ -239,7 +243,7 @@ export async function chatWithExpert(message: string, context: any, signal?: Abo
 
 export async function redTeamAudit(instructionSet: InstructionSet, signal?: AbortSignal): Promise<{ score: number; reasoning: string; vulnerabilities: string[] }> {
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-3-flash-preview",
     contents: `You are a Senior Security Auditor. Perform an adversarial red-team audit on this generated instruction set:
     
     ${instructionSet.finalPrompt}
@@ -261,7 +265,7 @@ export async function redTeamAudit(instructionSet: InstructionSet, signal?: Abor
   });
 
   if (signal?.aborted) throw new Error('AbortError');
-  return RedTeamSchema.parse(JSON.parse(response.text));
+  return RedTeamSchema.parse(JSON.parse(cleanJsonResponse(response.text)));
 }
 
 const WorkflowGenerationSchema = z.object({
@@ -275,7 +279,7 @@ const WorkflowGenerationSchema = z.object({
 
 export async function generateWorkflow(prompt: string, signal?: AbortSignal) {
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-3-flash-preview",
     contents: `You are an expert AI workflow architect. Given the following user request, design a multi-step AI workflow.
     Each step should have a name, a detailed intent (prompt), a target model, and an array of names of the steps it depends on.
     
@@ -309,12 +313,12 @@ export async function generateWorkflow(prompt: string, signal?: AbortSignal) {
   });
 
   if (signal?.aborted) throw new Error('AbortError');
-  return WorkflowGenerationSchema.parse(JSON.parse(response.text));
+  return WorkflowGenerationSchema.parse(JSON.parse(cleanJsonResponse(response.text)));
 }
 
 export async function testCrossModelParity(instructionSet: InstructionSet, signal?: AbortSignal) {
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-3-flash-preview",
     contents: `You are a cross-model compatibility expert. Evaluate this instruction set for parity across Claude, Gemini, and GPT architectures.
     
     Instruction Set:
@@ -337,12 +341,12 @@ export async function testCrossModelParity(instructionSet: InstructionSet, signa
     }
   });
   if (signal?.aborted) throw new Error('AbortError');
-  return JSON.parse(response.text);
+  return JSON.parse(cleanJsonResponse(response.text));
 }
 
 export async function mapConstitutionalStandards(instructionSet: InstructionSet, signal?: AbortSignal) {
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-3-flash-preview",
     contents: `You are a compliance and regulatory expert. Map the following instruction set to specific regulatory standards (e.g., GDPR, HIPAA, NIST, EU AI Act).
     
     Instruction Set:
@@ -372,5 +376,5 @@ export async function mapConstitutionalStandards(instructionSet: InstructionSet,
     }
   });
   if (signal?.aborted) throw new Error('AbortError');
-  return JSON.parse(response.text);
+  return JSON.parse(cleanJsonResponse(response.text));
 }
