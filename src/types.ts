@@ -47,7 +47,7 @@ export const InvariantSchema = z.object({
   id: z.string(),
   description: z.string(),
   status: z.enum(['verified', 'unverified', 'failed']),
-  evidence: z.string().optional(),
+  evidence: z.string().nullable().optional(),
 });
 
 export const BuildContractSchema = z.object({
