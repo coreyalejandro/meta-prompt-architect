@@ -62,14 +62,14 @@ export default function Manual({ isOpen, onClose }: ManualProps) {
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-8 space-y-12 custom-scrollbar selection:bg-[#00ff00] selection:text-[#000]">
           
-          {/* Section 0: C-RSP Protocol */}
+          {/* Section 0: Structured Prompt Pipeline */}
           <section className="space-y-4">
             <div className="flex items-center gap-2 text-[#00ff00]">
               <Cpu size={18} />
-              <h3 className="text-xs font-bold uppercase tracking-wider">00. C-RSP Level 5 Protocol</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider">00. Structured Prompt Pipeline</h3>
             </div>
             <div className="bg-[#050505] border border-[#1a1a1a] p-4 rounded-sm">
-              <p className="text-[11px] text-[#e0e0e0] font-bold mb-2 uppercase tracking-tighter">Cognitive Recursive System Prompting (C-RSP)</p>
+              <p className="text-[11px] text-[#e0e0e0] font-bold mb-2 uppercase tracking-tighter">Structured Prompt Pipeline</p>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="p-2 border border-[#1a1a1a] bg-[#0a0a0a]">
                   <span className="text-[9px] text-[#00ff00] block font-bold">[C]OGNITIVE</span>
@@ -90,7 +90,7 @@ export default function Manual({ isOpen, onClose }: ManualProps) {
               </div>
               <div className="mt-4 p-3 bg-[#001100] border border-[#00ff00]/20">
                 <p className="text-[10px] text-[#aaa]">
-                  <span className="text-[#00ff00] font-bold">LEVEL 5 GOVERNANCE:</span> The highest tier of autonomous AI orchestration. At Level 5, the system manages reasoning chains, adversarial red-teaming, and constitutional alignment with zero human intervention required during the build phase.
+                  <span className="text-[#00ff00] font-bold">THE PIPELINE:</span> The pipeline runs three sequential reasoning phases — intent audit, adversarial stress test, and instruction synthesis — before producing the final prompt artifact.
                 </p>
               </div>
             </div>
@@ -100,14 +100,14 @@ export default function Manual({ isOpen, onClose }: ManualProps) {
           <section className="space-y-4">
             <div className="flex items-center gap-2 text-[#00ff00]">
               <Target size={18} />
-              <h3 className="text-xs font-bold uppercase tracking-wider">01. Cognitive Governance (The "Why")</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider">01. Prompt Architecture (How It Works)</h3>
             </div>
             <p className="text-sm text-[#aaa] leading-relaxed">
-              Standard AI prompts often fail because they lack structural logic and fail to account for edge cases. This tool acts as a <span className="text-[#e0e0e0] font-bold">Cognitive Governance Layer</span>, transforming vague human ideas into "Steel-man" instruction sets that are virtually inescapable for target AI models.
+              Standard AI prompts often fail because they lack structural logic and fail to account for edge cases. This tool acts as a <span className="text-[#e0e0e0] font-bold">Cognitive Governance Layer</span>, transforming underspecified intent into structured, stress-tested instruction sets optimized for cross-model reliability.
             </p>
             <div className="bg-[#050505] border border-[#1a1a1a] p-4 rounded-sm border-l-2 border-l-[#00ff00]">
               <p className="text-[11px] text-[#888] italic">
-                "We don't just prompt; we architect. Every build is a high-dimensional contract between human intent and machine execution."
+                "Each output is a versioned instruction artifact: a system role, a verification gate sequence, and a final prompt optimized for the target model."
               </p>
             </div>
           </section>
@@ -116,7 +116,7 @@ export default function Manual({ isOpen, onClose }: ManualProps) {
           <section className="space-y-6">
             <div className="flex items-center gap-2 text-[#00ff00]">
               <Shield size={18} />
-              <h3 className="text-xs font-bold uppercase tracking-wider">02. Advanced Governance (The "Guardian")</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider">02. Safety and Compliance Features</h3>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -145,7 +145,7 @@ export default function Manual({ isOpen, onClose }: ManualProps) {
           <section className="space-y-6">
             <div className="flex items-center gap-2 text-[#00ff00]">
               <Terminal size={18} />
-              <h3 className="text-xs font-bold uppercase tracking-wider">03. Developer Workflow (The "Builder")</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider">03. Developer Tooling</h3>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -200,7 +200,7 @@ export default function Manual({ isOpen, onClose }: ManualProps) {
               <div className="bg-[#050505] border border-[#1a1a1a] p-4 rounded-sm">
                 <h4 className="text-[10px] font-bold text-[#e0e0e0] uppercase mb-2">LCI (Linear Context Injection)</h4>
                 <p className="text-[10px] text-[#666] mb-3">
-                  Proprietary "token squeezing" technology to maximize context window efficiency for long-running tasks.
+                  Context window optimization to maximize context window efficiency for long-running tasks.
                 </p>
                 <div className="flex gap-4">
                   <div className="flex-1">

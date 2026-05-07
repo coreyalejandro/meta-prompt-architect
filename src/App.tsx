@@ -21,7 +21,7 @@ import Tooltip from './components/Tooltip';
 export default function App() {
   const [intent, setIntent] = useState<UserIntent>({
     raw: '',
-    targetModel: ModelType.CLAUDE_SONNET_4_6,
+    targetModel: ModelType.GEMINI_1_5_PRO,
     useLCI: true,
     lciConfig: {
       contextWindow: 128000,
@@ -527,7 +527,7 @@ ${instructionSet.finalPrompt}
             </div>
             <div>
               <h1 className="text-sm font-bold tracking-widest uppercase">Meta-Prompt Architect</h1>
-              <p className="text-[10px] text-[#666] uppercase tracking-tighter">C-RSP Level 5 Cognitive Governance</p>
+              <p className="text-[10px] text-[#666] uppercase tracking-tighter">Structured Prompt Pipeline</p>
             </div>
           </div>
           
@@ -676,29 +676,39 @@ ${instructionSet.finalPrompt}
               <div className="space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-[11px] text-[#aaa] uppercase font-bold tracking-wider block">Target Model Architecture</label>
+                    <label className="text-[11px] text-[#aaa] uppercase font-bold tracking-wider block">Execution Profile</label>
                     <Tooltip text="Select the base model architecture for instruction optimization. Each model has unique reasoning biases.">
                       <Info size={14} className="text-[#666] hover:text-[#00ff00] cursor-help" />
                     </Tooltip>
                   </div>
                   
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-                    {Object.values(ModelType).map(m => (
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {['Fast', 'Deep', 'Audit', 'Compare', 'Export'].map(profile => (
                       <button
-                        key={m}
-                        onClick={() => setIntent(prev => ({ ...prev, targetModel: m }))}
-                        className={`p-3 border text-[10px] font-bold uppercase transition-all flex flex-col items-center justify-center gap-1 ${
-                          intent.targetModel === m 
-                            ? 'bg-[#00ff00] border-[#00ff00] text-[#000] shadow-[0_0_15px_rgba(0,255,0,0.2)]' 
-                            : 'bg-[#050505] border-[#1a1a1a] text-[#888] hover:border-[#333] hover:text-[#aaa]'
+                        key={profile}
+                        onClick={() => {
+                          const modelMap: Record<string, ModelType> = {
+                            'Fast': ModelType.GEMINI_1_5_FLASH,
+                            'Deep': ModelType.GEMINI_1_5_PRO,
+                            'Audit': ModelType.GPT_O1_PREVIEW,
+                            'Compare': ModelType.CLAUDE_3_5_SONNET,
+                            'Export': ModelType.GEMINI_1_5_PRO
+                          };
+                          setIntent(prev => ({ ...prev, targetModel: modelMap[profile] }));
+                        }}
+                        className={`px-3 py-1.5 text-[10px] font-bold uppercase transition-colors ${
+                          (intent.targetModel.includes(profile.toLowerCase()) || (profile === 'Fast' && intent.targetModel.includes('flash'))) 
+                            ? 'bg-[#00ff00] text-[#000]' 
+                            : 'bg-[#0f0f0f] border border-[#1a1a1a] text-[#888] hover:bg-[#1a1a1a]'
                         }`}
-                        aria-pressed={intent.targetModel === m}
                       >
-                        <span>{m.split('_')[0]}</span>
-                        <span className="text-[8px] opacity-70 tracking-widest">{m.split('_').slice(1).join(' ')}</span>
+                        {profile}
                       </button>
                     ))}
                   </div>
+                  <p className="text-[9px] text-[#444] mb-2">
+                     Routing: {intent.targetModel.includes('flash') ? 'Fast' : 'Deep'} Audit · Medium cost · Higher confidence
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 p-5 bg-[#050505] border border-[#1a1a1a]">

@@ -1,24 +1,13 @@
 import { z } from 'zod';
 
 export enum ModelType {
-  GPT_5_PRO = "gpt-5.4-pro",
-  GPT_5_THINKING = "gpt-5.3-thinking",
-  GPT_5_INSTANT = "gpt-5-instant",
-  GEMINI_3_1_PRO = "gemini-3.1-pro",
-  GEMINI_3_1_FLASH = "gemini-3.1-flash",
-  GEMINI_3_ULTRA = "gemini-3-ultra",
-  CLAUDE_OPUS_4_6 = "claude-opus-4.6",
-  CLAUDE_SONNET_4_6 = "claude-sonnet-4.6",
-  CLAUDE_HAIKU_4_5 = "claude-haiku-4.5",
-  LLAMA_4_SCOUT = "llama-4-scout",
-  LLAMA_4_MAVERICK = "llama-4-maverick",
-  LLAMA_4_BEHEMOTH = "llama-4-behemoth",
-  GROK_4_20 = "grok-4.20",
-  QWEN_3_5_397B = "qwen-3.5-397b",
-  DEEPSEEK_R1 = "deepseek-r1",
-  KIMI_K2_THINKING = "kimi-k2.5-thinking",
-  DEVSTRAL_2 = "devstral-2",
-  GLM_5 = "glm-5"
+  GEMINI_1_5_PRO = "gemini-1.5-pro",
+  GEMINI_1_5_FLASH = "gemini-1.5-flash",
+  GPT_4O = "gpt-4o",
+  GPT_O1_PREVIEW = "o1-preview",
+  CLAUDE_3_5_SONNET = "claude-3-5-sonnet",
+  CLAUDE_3_OPUS = "claude-3-opus",
+  DEEPSEEK_R1 = "deepseek-r1"
 }
 
 export enum ThemeType {

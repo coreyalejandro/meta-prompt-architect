@@ -29,24 +29,13 @@ function cleanJsonResponse(text: string) {
 
 export const getModelStrengths = (model: ModelType) => {
   switch (model) {
-    case ModelType.GPT_5_PRO: return "Industry-leading complex reasoning and ecosystem integration.";
-    case ModelType.GPT_5_THINKING: return "Advanced chain-of-thought reasoning.";
-    case ModelType.GPT_5_INSTANT: return "High-speed, low-latency reasoning.";
-    case ModelType.GEMINI_3_1_PRO: return "1M-2M context, multimodal speed, and strong agentic capabilities.";
-    case ModelType.GEMINI_3_1_FLASH: return "High-throughput multimodal speed.";
-    case ModelType.GEMINI_3_ULTRA: return "Flagship reasoning and multimodal synthesis.";
-    case ModelType.CLAUDE_OPUS_4_6: return "Best-in-class reasoning and complex analysis.";
-    case ModelType.CLAUDE_SONNET_4_6: return "Best-in-class coding and agentic tool use.";
-    case ModelType.CLAUDE_HAIKU_4_5: return "High-speed, efficient coding and writing.";
-    case ModelType.LLAMA_4_SCOUT: return "Efficient, open-weights reasoning.";
-    case ModelType.LLAMA_4_MAVERICK: return "Balanced open-weights performance.";
-    case ModelType.LLAMA_4_BEHEMOTH: return "10M token context and massive open-weights reasoning.";
-    case ModelType.GROK_4_20: return "Real-time information access and nuanced reasoning.";
-    case ModelType.QWEN_3_5_397B: return "Massive context, top-tier Asian language and coding performance.";
+    case ModelType.GEMINI_1_5_PRO: return "1M-2M context, strong reasoning, and multimodal agentic capabilities.";
+    case ModelType.GEMINI_1_5_FLASH: return "High-throughput, fast inference, multimodal speed.";
+    case ModelType.GPT_4O: return "Strong reasoning and ecosystem integration.";
+    case ModelType.GPT_O1_PREVIEW: return "Advanced chain-of-thought and complex task decomposition.";
+    case ModelType.CLAUDE_3_5_SONNET: return "Best-in-class coding and agentic tool use.";
+    case ModelType.CLAUDE_3_OPUS: return "Best-in-class complex reasoning and analysis.";
     case ModelType.DEEPSEEK_R1: return "High-level mathematical reasoning and cost-efficient open-weights.";
-    case ModelType.KIMI_K2_THINKING: return "Native multimodal and massive MoE reasoning.";
-    case ModelType.DEVSTRAL_2: return "Specialized software engineering and coding.";
-    case ModelType.GLM_5: return "Complex system engineering and long-horizon agentic tasks.";
     default: return "Optimize for speed and efficiency.";
   }
 };
@@ -131,7 +120,7 @@ export async function generateInstructionSet(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: intent.targetModel,
       contents: `Generate a high-dimensional Instruction Set for intent: "${intent.raw}" using resolution: "${stress.resolution}".
       Target Model: ${intent.targetModel}. 
       Model-Specific Optimization: ${modelStrengths}

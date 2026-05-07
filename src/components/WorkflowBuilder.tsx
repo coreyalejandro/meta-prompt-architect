@@ -24,27 +24,27 @@ const TEMPLATES = [
     name: "SaaS MVP",
     description: "Full-stack SaaS application with auth, database, and billing.",
     steps: [
-      { name: "Database Schema", intent: "Design the PostgreSQL database schema for a multi-tenant SaaS application.", targetModel: ModelType.GPT_5_PRO },
-      { name: "Backend API", intent: "Create the Node.js/Express REST API based on the database schema.", targetModel: ModelType.CLAUDE_SONNET_4_6, dependsOnNames: ["Database Schema"] },
-      { name: "Frontend UI", intent: "Build the React frontend dashboard connecting to the Backend API.", targetModel: ModelType.GEMINI_3_1_PRO, dependsOnNames: ["Backend API"] }
+      { name: "Database Schema", intent: "Design the PostgreSQL database schema for a multi-tenant SaaS application.", targetModel: ModelType.GEMINI_1_5_PRO },
+      { name: "Backend API", intent: "Create the Node.js/Express REST API based on the database schema.", targetModel: ModelType.CLAUDE_3_5_SONNET, dependsOnNames: ["Database Schema"] },
+      { name: "Frontend UI", intent: "Build the React frontend dashboard connecting to the Backend API.", targetModel: ModelType.GEMINI_1_5_PRO, dependsOnNames: ["Backend API"] }
     ]
   },
   {
     name: "Content Pipeline",
     description: "Automated content generation and review pipeline.",
     steps: [
-      { name: "Topic Ideation", intent: "Generate 5 trending topics in the AI space.", targetModel: ModelType.GEMINI_3_1_FLASH },
-      { name: "Draft Generation", intent: "Write a comprehensive 1500-word article for each topic.", targetModel: ModelType.CLAUDE_OPUS_4_6, dependsOnNames: ["Topic Ideation"] },
-      { name: "SEO Review", intent: "Review the drafts for SEO optimization and readability.", targetModel: ModelType.GPT_5_PRO, dependsOnNames: ["Draft Generation"] }
+      { name: "Topic Ideation", intent: "Generate 5 trending topics in the AI space.", targetModel: ModelType.GEMINI_1_5_FLASH },
+      { name: "Draft Generation", intent: "Write a comprehensive 1500-word article for each topic.", targetModel: ModelType.CLAUDE_3_OPUS, dependsOnNames: ["Topic Ideation"] },
+      { name: "SEO Review", intent: "Review the drafts for SEO optimization and readability.", targetModel: ModelType.GEMINI_1_5_PRO, dependsOnNames: ["Draft Generation"] }
     ]
   },
   {
     name: "Data Analysis",
     description: "Data extraction, transformation, and visualization.",
     steps: [
-      { name: "Data Extraction", intent: "Write a Python script to scrape data from a target website.", targetModel: ModelType.CLAUDE_HAIKU_4_5 },
-      { name: "Data Cleaning", intent: "Write a Pandas script to clean and normalize the extracted data.", targetModel: ModelType.CLAUDE_SONNET_4_6, dependsOnNames: ["Data Extraction"] },
-      { name: "Visualization", intent: "Create a Streamlit dashboard to visualize the cleaned data.", targetModel: ModelType.GEMINI_3_1_PRO, dependsOnNames: ["Data Cleaning"] }
+      { name: "Data Extraction", intent: "Write a Python script to scrape data from a target website.", targetModel: ModelType.GEMINI_1_5_FLASH },
+      { name: "Data Cleaning", intent: "Write a Pandas script to clean and normalize the extracted data.", targetModel: ModelType.CLAUDE_3_5_SONNET, dependsOnNames: ["Data Extraction"] },
+      { name: "Visualization", intent: "Create a Streamlit dashboard to visualize the cleaned data.", targetModel: ModelType.GEMINI_1_5_PRO, dependsOnNames: ["Data Cleaning"] }
     ]
   }
 ];
@@ -174,7 +174,7 @@ export default function WorkflowBuilder() {
       id: `step-${Date.now()}`,
       name: `Step ${steps.length + 1}`,
       intent: '',
-      targetModel: ModelType.GPT_5_PRO,
+      targetModel: ModelType.GEMINI_1_5_PRO,
       dependsOn: [],
       status: 'idle'
     };
@@ -598,17 +598,36 @@ export default function WorkflowBuilder() {
                 
                 <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] text-[#666] uppercase block mb-1">Target Model</label>
-                    <select 
-                      value={step.targetModel}
-                      onChange={(e) => updateStep(step.id, { targetModel: e.target.value as ModelType })}
-                      disabled={isRunning}
-                      className="w-full bg-[#0f0f0f] border border-[#1a1a1a] p-2 text-[10px] outline-none focus:border-[#0088ff] disabled:opacity-50"
-                    >
-                      {Object.values(ModelType).map(m => (
-                        <option key={m} value={m}>{m.toUpperCase()}</option>
+                    <label className="text-[10px] text-[#666] uppercase block mb-1">Execution Profile</label>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {['Fast', 'Deep', 'Audit', 'Compare', 'Export'].map(profile => (
+                        <button
+                          key={profile}
+                          type="button"
+                          onClick={() => {
+                            // Map profile to actual model
+                            const modelMap: Record<string, ModelType> = {
+                              'Fast': ModelType.GEMINI_1_5_FLASH,
+                              'Deep': ModelType.GEMINI_1_5_PRO,
+                              'Audit': ModelType.GPT_O1_PREVIEW,
+                              'Compare': ModelType.CLAUDE_3_5_SONNET,
+                              'Export': ModelType.GEMINI_1_5_PRO
+                            };
+                            updateStep(step.id, { targetModel: modelMap[profile] });
+                          }}
+                          className={`px-2 py-1 text-[9px] font-bold uppercase transition-colors ${
+                            (step.targetModel.includes(profile.toLowerCase()) || (profile === 'Fast' && step.targetModel.includes('flash'))) 
+                              ? 'bg-[#0088ff] text-[#000]' 
+                              : 'bg-[#1a1a1a] text-[#888] hover:bg-[#222]'
+                          }`}
+                        >
+                          {profile}
+                        </button>
                       ))}
-                    </select>
+                    </div>
+                    <p className="text-[9px] text-[#444] mb-2">
+                       Routing: {step.targetModel.includes('flash') ? 'Fast' : 'Deep'} Audit · Medium cost · Higher confidence
+                    </p>
                   </div>
                   
                   <div>
