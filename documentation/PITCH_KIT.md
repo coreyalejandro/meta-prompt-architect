@@ -1,7 +1,7 @@
 # Meta-Prompt Architect: Pitch Kit & Resume
 
 ## 1. GitHub Description
-> **Meta-Prompt Architect**: A high-dimensional cognitive governance layer for LLMs. Transforms vague user intent into "Steel-man" instruction sets using recursive stress-testing, Linear Context Injection (LCI), and model-specific reasoning adapters.
+> **Meta-Prompt Architect**: A high-dimensional cognitive governance layer for LLMs. Transforms vague user intent into hardened instruction sets using recursive stress-testing, Linear Context Injection (LCI), and model-specific reasoning adapters.
 
 ---
 
@@ -14,7 +14,7 @@
 "Most AI prompts fail because they lack structural logic and fail to account for edge cases. Meta-Prompt Architect solves this by running every intent through a recursive stress-test and audit pipeline before generating a final payload. It ensures that your AI assistants operate within a strict 'Cognitive Governance' layer, maximizing both safety and execution precision."
 
 ### The Paragraph Pitch (5-7 Sentences)
-"In an era of autonomous AI agents, the bottleneck is no longer the model's intelligence, but the quality of the instructions it receives. Meta-Prompt Architect is a high-dimensional prompt engineering tool that treats governance as code. By utilizing a three-phase pipeline—Audit, Stress-Test, and Synthesis—it hardens user intent into 'Steel-man' instruction sets that are virtually inescapable for the target AI. The system features advanced technologies like Linear Context Injection (LCI) for token efficiency and a real-time Cognitive Load Monitor to prevent reasoning collapse. Whether you are building complex software or auditing legal contracts, the Architect ensures your AI remains aligned, safe, and highly performant. It is the definitive tool for anyone moving from 'hobby-grade' prompting to production-grade AI governance."
+"In an era of autonomous AI agents, the bottleneck is no longer the model's intelligence, but the quality of the instructions it receives. Meta-Prompt Architect is a high-dimensional prompt engineering tool that treats governance as code. By utilizing a three-phase pipeline—Audit, Stress-Test, and Synthesis—it hardens user intent into hardened instruction sets that are virtually inescapable for the target AI. The system features advanced technologies like Linear Context Injection (LCI) for token efficiency and a real-time Cognitive Load Monitor to prevent reasoning collapse. Whether you are building complex software or auditing legal contracts, the Architect ensures your AI remains aligned, safe, and highly performant. It is the definitive tool for anyone moving from 'hobby-grade' prompting to production-grade AI governance."
 
 ---
 

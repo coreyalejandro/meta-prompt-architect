@@ -5,12 +5,13 @@ import { UserIntent, AuditResult, StressTestResult, InstructionSet, ModelType, M
 import KnowledgeExpert from './components/KnowledgeExpert';
 import { auditIntent, stressTest, generateInstructionSet, getRetrospective, scanForPII, redTeamAudit, testCrossModelParity, mapConstitutionalStandards } from './services/gemini';
 import { estimateCost } from './services/tokenEstimator';
-import { Terminal, Cpu, ShieldAlert, Zap, Save, RefreshCw, AlertCircle, BookOpen, Layers, CheckCircle2, FileCode, Printer, Eye, HelpCircle, History, Download, Sun, Moon, Monitor, Info, FileText, Sparkles, GitBranch, DollarSign, Copy, FileJson, Search, Scale, Activity, Archive } from 'lucide-react';
+import { Terminal, Cpu, ShieldAlert, ShieldCheck, Zap, Save, RefreshCw, AlertCircle, BookOpen, Layers, CheckCircle2, FileCode, Printer, Eye, HelpCircle, History, Download, Sun, Moon, Monitor, Info, FileText, Sparkles, GitBranch, DollarSign, Copy, FileJson, Search, Scale, Activity, Archive } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { generateCursorRules } from './services/ideHandoff';
 import { generateExportBundle } from './utils/export';
 import Manual from './components/Manual';
 import AuditView from './components/AuditView';
+import AuditTrail from './components/AuditTrail';
 import WorkflowBuilder from './components/WorkflowBuilder';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { storage } from './utils/storage';
@@ -34,6 +35,8 @@ export default function App() {
   const [stress, setStress] = useState<StressTestResult | null>(null);
   const [instructionSet, setInstructionSet] = useState<InstructionSet | null>(null);
   const [loading, setLoading] = useState(false);
+  const [generationPhase, setGenerationPhase] = useState<'idle' | 'audit' | 'stress' | 'synthesis' | 'verification' | 'finalizing'>('idle');
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [memory, setMemory] = useState<MemoryState[]>([]);
   const [failedStep, setFailedStep] = useState('');
@@ -48,7 +51,7 @@ export default function App() {
   const [roiAnalytics, setRoiAnalytics] = useState<{ timeSaved: number, costSaved: number, totalGenerations: number } | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'prompt' | 'sampling' | 'audit' | 'docs' | 'history' | 'workflow' | 'analytics' | 'compliance'>('prompt');
+  const [activeTab, setActiveTab] = useState<'prompt' | 'sampling' | 'audit' | 'docs' | 'history' | 'workflow' | 'analytics' | 'compliance' | 'verification'>('prompt');
   const [showDocs, setShowDocs] = useState(false);
   const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [historyFilterDate, setHistoryFilterDate] = useState('');
@@ -207,21 +210,32 @@ export default function App() {
     }
 
     setLoading(true);
+    setGenerationPhase('audit');
+    setProgress(10);
     setError(null);
     setPiiFindings([]);
     try {
       const auditRes = await auditIntent(intent, signal);
       setAudit(auditRes);
+      setProgress(35);
+      setGenerationPhase('stress');
       
       const stressRes = await stressTest(intent, auditRes, signal);
       setStress(stressRes);
+      setProgress(65);
+      setGenerationPhase('synthesis');
       
       // High Value Added: Recursive Context Injection
       const instructionRes = await generateInstructionSet(intent, stressRes, memory, signal);
       setInstructionSet(instructionRes);
+      setProgress(90);
+      setGenerationPhase('verification');
       
       // We have the core instruction set, so we can stop basic loading and push to history
       setLoading(false);
+      setProgress(100);
+      setGenerationPhase('finalizing');
+      setTimeout(() => setGenerationPhase('idle'), 1000);
 
       // Tier 3: ROI Analytics (Immediate)
       setRoiAnalytics(prev => {
@@ -283,6 +297,8 @@ export default function App() {
         return;
       }
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      setGenerationPhase('idle');
+      setProgress(0);
     } finally {
       setLoading(false);
     }
@@ -395,7 +411,7 @@ ${instructionSet.finalPrompt}
     doc.text("GitHub Description", 20, y);
     y += 10;
     doc.setFontSize(12);
-    const splitDesc = doc.splitTextToSize("A high-dimensional cognitive governance layer for LLMs. Transforms vague user intent into 'Steel-man' instruction sets using recursive stress-testing, Linear Context Injection (LCI), and model-specific reasoning adapters.", 170);
+    const splitDesc = doc.splitTextToSize("A high-dimensional cognitive governance layer for LLMs. Transforms vague user intent into hardened instruction sets using recursive stress-testing, Linear Context Injection (LCI), and model-specific reasoning adapters.", 170);
     doc.text(splitDesc, 20, y);
     y += (splitDesc.length * 7) + 10;
     
@@ -421,7 +437,7 @@ ${instructionSet.finalPrompt}
     doc.text("Paragraph Pitch", 20, y);
     y += 7;
     doc.setFontSize(12);
-    const splitPara = doc.splitTextToSize("In an era of autonomous AI agents, the bottleneck is no longer the model's intelligence, but the quality of the instructions it receives. Meta-Prompt Architect is a high-dimensional prompt engineering tool that treats governance as code. By utilizing a three-phase pipeline—Audit, Stress-Test, and Synthesis—it hardens user intent into 'Steel-man' instruction sets that are virtually inescapable for the target AI. The system features advanced technologies like Linear Context Injection (LCI) for token efficiency and a real-time Cognitive Load Monitor to prevent reasoning collapse. Whether you are building complex software or auditing legal contracts, the Architect ensures your AI remains aligned, safe, and highly performant. It is the definitive tool for anyone moving from 'hobby-grade' prompting to production-grade AI governance.", 170);
+    const splitPara = doc.splitTextToSize("In an era of autonomous AI agents, the bottleneck is no longer the model's intelligence, but the quality of the instructions it receives. Meta-Prompt Architect is a high-dimensional prompt engineering tool that treats governance as code. By utilizing a three-phase pipeline—Audit, Stress-Test, and Synthesis—it hardens user intent into hardened instruction sets that are virtually inescapable for the target AI. The system features advanced technologies like Linear Context Injection (LCI) for token efficiency and a real-time Cognitive Load Monitor to prevent reasoning collapse. Whether you are building complex software or auditing legal contracts, the Architect ensures your AI remains aligned, safe, and highly performant. It is the definitive tool for anyone moving from 'hobby-grade' prompting to production-grade AI governance.", 170);
     doc.text(splitPara, 20, y);
     y += (splitPara.length * 7) + 15;
     
@@ -688,10 +704,10 @@ ${instructionSet.finalPrompt}
                         key={profile}
                         onClick={() => {
                           const modelMap: Record<string, ModelType> = {
-                            'Fast': ModelType.GEMINI_1_5_FLASH,
+                            'Fast': ModelType.GEMINI_2_0_FLASH,
                             'Deep': ModelType.GEMINI_1_5_PRO,
                             'Audit': ModelType.GPT_O1_PREVIEW,
-                            'Compare': ModelType.CLAUDE_3_5_SONNET,
+                            'Compare': ModelType.CLAUDE_3_7_SONNET,
                             'Export': ModelType.GEMINI_1_5_PRO
                           };
                           setIntent(prev => ({ ...prev, targetModel: modelMap[profile] }));
@@ -743,36 +759,50 @@ ${instructionSet.finalPrompt}
                             { label: 'Deep', window: 512000, ratio: 8 },
                             { label: 'Infinite', window: 1000000, ratio: 16 },
                             { label: 'Custom', window: intent.lciConfig.contextWindow, ratio: intent.lciConfig.compressionRatio }
-                          ].map(preset => (
-                            <button
-                              key={preset.label}
-                              onClick={() => {
-                                if (preset.label !== 'Custom') {
-                                  setIntent(prev => ({
-                                    ...prev,
-                                    lciConfig: { contextWindow: preset.window, compressionRatio: preset.ratio }
-                                  }));
-                                }
-                              }}
-                              className={`flex-1 py-2 px-2 text-[9px] font-bold uppercase border transition-all ${
-                                (preset.label !== 'Custom' && intent.lciConfig.contextWindow === preset.window && intent.lciConfig.compressionRatio === preset.ratio) ||
-                                (preset.label === 'Custom' && ![128000, 512000, 1000000].includes(intent.lciConfig.contextWindow))
-                                  ? 'bg-[#00ff00]/10 border-[#00ff00] text-[#00ff00]'
-                                  : 'bg-[#0a0a0a] border-[#1a1a1a] text-[#888] hover:text-[#aaa]'
-                              }`}
-                            >
-                              {preset.label}
-                            </button>
-                          ))}
+                          ].map(preset => {
+                            const isActive = preset.label === 'Custom' 
+                              ? (![128000, 512000, 1000000].includes(intent.lciConfig.contextWindow) || (intent.lciConfig.contextWindow === 128000 && intent.lciConfig.compressionRatio !== 4) || (intent.lciConfig.contextWindow === 512000 && intent.lciConfig.compressionRatio !== 8) || (intent.lciConfig.contextWindow === 1000000 && intent.lciConfig.compressionRatio !== 16))
+                              : (intent.lciConfig.contextWindow === preset.window && intent.lciConfig.compressionRatio === preset.ratio);
+
+                            return (
+                              <button
+                                key={preset.label}
+                                onClick={() => {
+                                  if (preset.label !== 'Custom') {
+                                    setIntent(prev => ({
+                                      ...prev,
+                                      lciConfig: { contextWindow: preset.window, compressionRatio: preset.ratio }
+                                    }));
+                                  } else {
+                                    // If clicking custom, just ensure values are slightly off-preset to force sliders visible if they weren't
+                                    if (!isActive) {
+                                      setIntent(prev => ({
+                                        ...prev,
+                                        lciConfig: { ...prev.lciConfig, compressionRatio: prev.lciConfig.compressionRatio + 0.1 }
+                                      }));
+                                      // Immediately round back if needed, but the condition above handles it
+                                    }
+                                  }
+                                }}
+                                className={`flex-1 py-2 px-2 text-[9px] font-bold uppercase border transition-all ${
+                                  isActive
+                                    ? 'bg-[#00ff00]/10 border-[#00ff00] text-[#00ff00]'
+                                    : 'bg-[#0a0a0a] border-[#1a1a1a] text-[#888] hover:text-[#aaa]'
+                                }`}
+                              >
+                                {preset.label}
+                              </button>
+                            );
+                          })}
                         </div>
 
                         <AnimatePresence>
-                          {(![128000, 512000, 1000000].includes(intent.lciConfig.contextWindow) || intent.lciConfig.compressionRatio !== (intent.lciConfig.contextWindow === 128000 ? 4 : intent.lciConfig.contextWindow === 512000 ? 8 : 16)) && (
+                          {(intent.useLCI) && (
                             <motion.div
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: 'auto' }}
                               exit={{ opacity: 0, height: 0 }}
-                              className="space-y-4 pt-2"
+                              className="space-y-4 pt-2 border-t border-[#1a1a1a] mt-4"
                             >
                               <div className="space-y-2">
                                 <div className="flex justify-between text-[10px] uppercase font-bold">
@@ -789,10 +819,10 @@ ${instructionSet.finalPrompt}
                               <div className="space-y-2">
                                 <div className="flex justify-between text-[10px] uppercase font-bold">
                                   <span className="text-[#888]">Compression Ratio</span>
-                                  <span className="text-[#00ff00]">{intent.lciConfig.compressionRatio}:1</span>
+                                  <span className="text-[#00ff00]">{intent.lciConfig.compressionRatio.toFixed(1)}:1</span>
                                 </div>
                                 <input 
-                                  type="range" min="1" max="20" step="1"
+                                  type="range" min="1" max="20" step="0.5"
                                   value={intent.lciConfig.compressionRatio}
                                   onChange={(e) => setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, compressionRatio: Number(e.target.value) } }))}
                                   className="w-full h-1.5 bg-[#1a1a1a] appearance-none cursor-pointer accent-[#00ff00] rounded-full"
@@ -842,7 +872,7 @@ ${instructionSet.finalPrompt}
                   aria-label="Execute Build Pipeline"
                 >
                   {loading ? <RefreshCw className="animate-spin" size={18} /> : <Zap size={18} />}
-                  Execute Pipeline
+                  {loading ? `EXECUTING_${generationPhase.toUpperCase()}...` : "Execute Pipeline"}
                 </button>
               </Tooltip>
             </div>
@@ -937,20 +967,76 @@ ${instructionSet.finalPrompt}
                   )}
                 </div>
               </motion.div>
-            ) : loading ? (
+            ) : loading || generationPhase !== 'idle' ? (
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="h-full flex flex-col items-center justify-center gap-4 bg-[#0f0f0f] border border-[#1a1a1a] rounded-sm p-12"
+                className="h-full flex flex-col items-center justify-center gap-8 bg-[#0f0f0f] border border-[#1a1a1a] rounded-sm p-16"
               >
-                <div className="relative w-16 h-16">
-                  <div className="absolute inset-0 border-4 border-[#1a1a1a] rounded-full" />
-                  <div className="absolute inset-0 border-4 border-t-[#00ff00] rounded-full animate-spin" />
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-bold tracking-widest uppercase animate-pulse">Processing Cognitive Pipeline</p>
-                  <p className="text-xs text-[#999] mt-1">Synthesizing high-dimensional instruction set...</p>
+                <div className="w-full max-w-xl space-y-6">
+                  <div className="flex justify-between items-end">
+                    <div className="space-y-1">
+                      <p className="text-xs text-[#00ff00] font-bold uppercase tracking-widest flex items-center gap-2">
+                        <Activity size={14} className="animate-pulse" />
+                        Phase: {generationPhase.toUpperCase()}
+                      </p>
+                      <h3 className="text-lg font-bold text-white uppercase tracking-wider">
+                        {generationPhase === 'audit' && "Scanning Environment..."}
+                        {generationPhase === 'stress' && "Executing Stress-Test..."}
+                        {generationPhase === 'synthesis' && "Synthesizing Instruction Set..."}
+                        {generationPhase === 'verification' && "Running Formal Verification..."}
+                        {generationPhase === 'finalizing' && "Finalizing Payload..."}
+                      </h3>
+                    </div>
+                    <span className="text-2xl font-black text-[#00ff00] tabular-nums">{progress}%</span>
+                  </div>
+                  
+                  <div className="relative w-full h-4 bg-[#050505] border border-[#1a1a1a] rounded-full overflow-hidden p-0.5">
+                    <motion.div 
+                      className="h-full bg-gradient-to-r from-[#004400] via-[#00ff00] to-[#bbfafb] shadow-[0_0_20px_rgba(0,255,0,0.5)]"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${progress}%` }}
+                      transition={{ type: "spring", stiffness: 50, damping: 20 }}
+                    />
+                    {/* Scanning line effect */}
+                    <motion.div 
+                      className="absolute top-0 bottom-0 w-20 bg-white/20 skew-x-12 blur-sm"
+                      animate={{ left: ['-20%', '120%'] }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { id: 'audit', label: 'SCAN' },
+                      { id: 'stress', label: 'STRESS' },
+                      { id: 'synthesis', label: 'SYNTH' },
+                      { id: 'verification', label: 'VERIFY' }
+                    ].map((step, i) => {
+                      const phases = ['audit', 'stress', 'synthesis', 'verification', 'finalizing'];
+                      const currentIdx = phases.indexOf(generationPhase);
+                      const isCompleted = currentIdx > i;
+                      const isActive = currentIdx === i;
+                      
+                      return (
+                        <div key={step.id} className="space-y-2">
+                          <div className={`h-1 rounded-full transition-colors duration-500 ${isCompleted ? 'bg-[#00ff00]' : isActive ? 'bg-[#00ff00] animate-pulse' : 'bg-[#1a1a1a]'}`} />
+                          <span className={`text-[8px] font-bold uppercase tracking-tighter block text-center ${isCompleted || isActive ? 'text-[#00ff00]' : 'text-[#444]'}`}>
+                            {step.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <p className="text-[10px] text-[#666] text-center uppercase tracking-[0.2em]">
+                    {generationPhase === 'audit' && "Detecting implicit assumptions and truth surfaces"}
+                    {generationPhase === 'stress' && "Adversarial logic checking and resolution modeling"}
+                    {generationPhase === 'synthesis' && "Mapping cognitive stacks to model architectures"}
+                    {generationPhase === 'verification' && "Enforcing invariants and intent drift safety"}
+                    {generationPhase === 'finalizing' && "Compiling high-dimensional instruction set"}
+                  </p>
                 </div>
               </motion.div>
             ) : instructionSet ? (
@@ -1077,6 +1163,14 @@ ${instructionSet.finalPrompt}
                           className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'compliance' ? 'bg-[#0f0f0f] text-[#00ff00]' : 'text-[#666] hover:text-[#aaa]'}`}
                         >
                           <Scale size={12} /> Compliance
+                        </button>
+                      </Tooltip>
+                      <Tooltip text="Formal Verification and Build Contract Audit Trail.">
+                        <button 
+                          onClick={() => setActiveTab('verification')}
+                          className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'verification' ? 'bg-[#0f0f0f] text-[#00ff00]' : 'text-[#666] hover:text-[#aaa]'}`}
+                        >
+                          <ShieldCheck size={12} /> Verification
                         </button>
                       </Tooltip>
                     </div>
@@ -1281,7 +1375,7 @@ ${instructionSet.finalPrompt}
                             <section>
                               <h3 className="text-[10px] text-[#00ff00] uppercase font-bold mb-2">GitHub Description</h3>
                               <p className="text-[11px] text-[#aaa] bg-[#050505] p-3 border border-[#1a1a1a]">
-                                Meta-Prompt Architect: A high-dimensional cognitive governance layer for LLMs. Transforms vague user intent into "Steel-man" instruction sets using recursive stress-testing, Linear Context Injection (LCI), and model-specific reasoning adapters.
+                                Meta-Prompt Architect: A high-dimensional cognitive governance layer for LLMs. Transforms vague user intent into hardened instruction sets using recursive stress-testing, Linear Context Injection (LCI), and model-specific reasoning adapters.
                               </p>
                             </section>
 
@@ -1320,7 +1414,7 @@ ${instructionSet.finalPrompt}
                         <section className="pt-6 border-t border-[#1a1a1a]">
                           <h3 className="text-[10px] text-[#00ff00] uppercase font-bold mb-2">Full Paragraph Pitch</h3>
                           <div className="bg-[#050505] p-4 border border-[#1a1a1a] text-[11px] text-[#aaa] leading-relaxed">
-                            In an era of autonomous AI agents, the bottleneck is no longer the model's intelligence, but the quality of the instructions it receives. Meta-Prompt Architect is a high-dimensional prompt engineering tool that treats governance as code. By utilizing a three-phase pipeline—Audit, Stress-Test, and Synthesis—it hardens user intent into 'Steel-man' instruction sets that are virtually inescapable for the target AI. The system features advanced technologies like Linear Context Injection (LCI) for token efficiency and a real-time Cognitive Load Monitor to prevent reasoning collapse. Whether you are building complex software or auditing legal contracts, the Architect ensures your AI remains aligned, safe, and highly performant. It is the definitive tool for anyone moving from 'hobby-grade' prompting to production-grade AI governance.
+                            In an era of autonomous AI agents, the bottleneck is no longer the model's intelligence, but the quality of the instructions it receives. Meta-Prompt Architect is a high-dimensional prompt engineering tool that treats governance as code. By utilizing a three-phase pipeline—Audit, Stress-Test, and Synthesis—it hardens user intent into hardened instruction sets that are virtually inescapable for the target AI. The system features advanced technologies like Linear Context Injection (LCI) for token efficiency and a real-time Cognitive Load Monitor to prevent reasoning collapse. Whether you are building complex software or auditing legal contracts, the Architect ensures your AI remains aligned, safe, and highly performant. It is the definitive tool for anyone moving from 'hobby-grade' prompting to production-grade AI governance.
                           </div>
                         </section>
 
@@ -1622,6 +1716,24 @@ ${instructionSet.finalPrompt}
                             <Scale size={48} className="mx-auto text-[#222] mb-4" />
                             <h3 className="text-sm font-bold text-[#666] uppercase tracking-[0.3em]">Compliance Inactive</h3>
                             <p className="text-[11px] text-[#444] mt-2 max-w-sm mx-auto">Execute the master pipeline to generate regulatory alignment mapping and security certification reports.</p>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                    {activeTab === 'verification' && (
+                      <motion.div 
+                        key="verification"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                        {instructionSet.buildContract ? (
+                          <AuditTrail contract={instructionSet.buildContract} />
+                        ) : (
+                          <div className="text-center py-20 border border-dashed border-[#1a1a1a] rounded-sm bg-[#050505]">
+                            <ShieldCheck size={48} className="mx-auto text-[#222] mb-4" />
+                            <h3 className="text-sm font-bold text-[#666] uppercase tracking-[0.3em]">Verification Buffer Empty</h3>
+                            <p className="text-[11px] text-[#444] mt-2 max-w-sm mx-auto">Build Contract and formal verification assets are generated during the final synthesis phase.</p>
                           </div>
                         )}
                       </motion.div>

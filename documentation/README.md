@@ -27,7 +27,7 @@ graph TD
     A[User Intent] --> B[Environmental Scan]
     B --> C[Audit Findings]
     C --> D[Stress Test]
-    D --> E[Steel-man Resolution]
+    D --> E[Hardened Resolution]
     E --> F[Synthesis Engine]
     
     subgraph "Governance Layer"

@@ -9,6 +9,8 @@ const MODEL_PRICING: Record<ModelType, { input: number; output: number }> = {
   [ModelType.CLAUDE_3_5_SONNET]: { input: 3, output: 15 },
   [ModelType.CLAUDE_3_OPUS]: { input: 15, output: 75 },
   [ModelType.DEEPSEEK_R1]: { input: 0.5, output: 1 },
+  [ModelType.GEMINI_2_0_FLASH]: { input: 0.2, output: 0.6 },
+  [ModelType.CLAUDE_3_7_SONNET]: { input: 3, output: 15 },
 };
 
 export function estimateCost(model: ModelType, inputTokens: number, outputTokens: number): number {

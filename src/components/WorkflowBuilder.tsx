@@ -46,6 +46,15 @@ const TEMPLATES = [
       { name: "Data Cleaning", intent: "Write a Pandas script to clean and normalize the extracted data.", targetModel: ModelType.CLAUDE_3_5_SONNET, dependsOnNames: ["Data Extraction"] },
       { name: "Visualization", intent: "Create a Streamlit dashboard to visualize the cleaned data.", targetModel: ModelType.GEMINI_1_5_PRO, dependsOnNames: ["Data Cleaning"] }
     ]
+  },
+  {
+    name: "AI Agent Orchestration",
+    description: "Multi-agent system with tool selection, function calling, and state persistence.",
+    steps: [
+      { name: "Tool Selection Logic", intent: "Design a routing mechanism that selects the optimal tool (Search, Calculator, Database) based on user query intent.", targetModel: ModelType.GEMINI_1_5_PRO },
+      { name: "Function Calling Registry", intent: "Define a JSON schema-based function registry and the handling logic for tool execution results.", targetModel: ModelType.GPT_4O, dependsOnNames: ["Tool Selection Logic"] },
+      { name: "State Management", intent: "Implement a state persistence layer and 'Scratchpad' memory for long-running agent tasks.", targetModel: ModelType.CLAUDE_3_5_SONNET, dependsOnNames: ["Function Calling Registry"] }
+    ]
   }
 ];
 
@@ -255,10 +264,10 @@ export default function WorkflowBuilder() {
           let targetContext = 128000;
           let targetCompression = 4;
           
-          if (step.targetModel.includes('3.1-pro') || step.targetModel.includes('behemoth')) {
+          if (step.targetModel === ModelType.GEMINI_1_5_PRO || step.targetModel === ModelType.GPT_O1_PREVIEW) {
             targetContext = 1000000;
             targetCompression = 16;
-          } else if (step.targetModel.includes('opus') || step.targetModel.includes('pro')) {
+          } else if (step.targetModel === ModelType.CLAUDE_3_OPUS || step.targetModel === ModelType.CLAUDE_3_5_SONNET) {
             targetContext = 512000;
             targetCompression = 8;
           }
@@ -607,10 +616,10 @@ export default function WorkflowBuilder() {
                           onClick={() => {
                             // Map profile to actual model
                             const modelMap: Record<string, ModelType> = {
-                              'Fast': ModelType.GEMINI_1_5_FLASH,
+                              'Fast': ModelType.GEMINI_2_0_FLASH,
                               'Deep': ModelType.GEMINI_1_5_PRO,
                               'Audit': ModelType.GPT_O1_PREVIEW,
-                              'Compare': ModelType.CLAUDE_3_5_SONNET,
+                              'Compare': ModelType.CLAUDE_3_7_SONNET,
                               'Export': ModelType.GEMINI_1_5_PRO
                             };
                             updateStep(step.id, { targetModel: modelMap[profile] });

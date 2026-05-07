@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
 export enum ModelType {
+  GEMINI_2_0_FLASH = "gemini-2.0-flash",
   GEMINI_1_5_PRO = "gemini-1.5-pro",
   GEMINI_1_5_FLASH = "gemini-1.5-flash",
   GPT_4O = "gpt-4o",
   GPT_O1_PREVIEW = "o1-preview",
+  CLAUDE_3_7_SONNET = "claude-3-7-sonnet",
   CLAUDE_3_5_SONNET = "claude-3-5-sonnet",
   CLAUDE_3_OPUS = "claude-3-opus",
   DEEPSEEK_R1 = "deepseek-r1"
@@ -41,6 +43,22 @@ export const StressTestResultSchema = z.object({
   resolution: z.string(),
 });
 
+export const InvariantSchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  status: z.enum(['verified', 'unverified', 'failed']),
+  evidence: z.string().optional(),
+});
+
+export const BuildContractSchema = z.object({
+  invariants: z.array(InvariantSchema),
+  intentDrift: z.number(),
+  redTeamReport: z.object({
+    threatLevel: z.enum(['low', 'medium', 'high']),
+    findings: z.array(z.string()),
+  }),
+});
+
 export const InstructionSetSchema = z.object({
   systemRole: z.string(),
   cognitiveStack: z.array(z.string()),
@@ -48,6 +66,7 @@ export const InstructionSetSchema = z.object({
   handoffArtifacts: z.array(z.string()),
   verbalizedSampling: z.string().optional(),
   finalPrompt: z.string(),
+  buildContract: BuildContractSchema.optional(),
 });
 
 export const HistoryItemSchema = z.object({
@@ -70,9 +89,13 @@ export const MemoryStateSchema = z.object({
 export type UserIntent = z.infer<typeof UserIntentSchema>;
 export type AuditResult = z.infer<typeof AuditResultSchema>;
 export type StressTestResult = z.infer<typeof StressTestResultSchema>;
+export type Invariant = z.infer<typeof InvariantSchema>;
+export type BuildContract = z.infer<typeof BuildContractSchema>;
 export type InstructionSet = z.infer<typeof InstructionSetSchema>;
 export type HistoryItem = z.infer<typeof HistoryItemSchema>;
 export type MemoryState = z.infer<typeof MemoryStateSchema>;
+
+export type TruthStatus = "verified" | "unverified" | "failed";
 
 export const WORMAuditLogSchema = z.object({
   id: z.string(),
