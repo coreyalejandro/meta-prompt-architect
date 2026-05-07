@@ -588,7 +588,7 @@ ${instructionSet.finalPrompt}
                   <History size={16} /> HISTORY
                 </button>
               </Tooltip>
-              <Tooltip text="Open the Golden Documentation guide. (Cmd/Ctrl + /)">
+              <Tooltip text="Open the Help Guide. (Cmd/Ctrl + /)">
                 <button 
                   onClick={() => setIsManualOpen(true)}
                   className="text-[#888] hover:text-[#00ff00] transition-colors flex items-center gap-2 uppercase tracking-widest whitespace-nowrap text-xs font-bold"

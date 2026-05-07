@@ -49,7 +49,7 @@ export default function Manual({ isOpen, onClose }: ManualProps) {
         <div className="border-b border-[#1a1a1a] p-4 flex items-center justify-between bg-[#050505]">
           <div className="flex items-center gap-3">
             <Book className="text-[#00ff00]" size={20} />
-            <h2 className="text-sm font-bold uppercase tracking-widest">Golden Documentation: Meta-Prompt Architect v2.0</h2>
+            <h2 className="text-sm font-bold uppercase tracking-widest">Meta-Prompt Architect v2.0</h2>
           </div>
           <button 
             onClick={onClose}
