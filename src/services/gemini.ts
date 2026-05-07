@@ -38,7 +38,7 @@ export function scanForPII(text: string): PIIFinding[] {
   return findings;
 }
 
-const GENERATION_MODEL = "gemini-2.0-flash-001";
+const GENERATION_MODEL = "gemini-3-flash-preview";
 
 // Essential: Model-Specific Reasoning Adapters
 function cleanJsonResponse(text: string) {
