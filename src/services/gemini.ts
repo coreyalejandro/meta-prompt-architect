@@ -1,99 +1,35 @@
-/**
- * LLM service — originally Gemini, now powered by Groq (llama-3.3-70b-versatile).
- * All exported function signatures are unchanged so the rest of the app requires no edits.
- * Provider portability: swap VITE_GROQ_API_KEY + GROQ_MODEL env vars to change backend.
- */
-import Groq from "groq-sdk";
-import {
-  UserIntent,
-  AuditResult,
-  StressTestResult,
-  InstructionSet,
-  ModelType,
-  Retrospective,
-  PIIFinding,
-  MemoryState,
-  AuditResultSchema,
-  StressTestResultSchema,
-  InstructionSetSchema,
-} from "../types";
-import { z } from "zod";
+import { GoogleGenAI, Type } from "@google/genai";
+import { UserIntent, AuditResult, StressTestResult, InstructionSet, ModelType, Retrospective, PIIFinding, MemoryState, AuditResultSchema, StressTestResultSchema, InstructionSetSchema } from "../types";
+import { z } from 'zod';
 
-const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
-
-// ── helpers ────────────────────────────────────────────────────────────────
-
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  retries = 3,
-  delay = 1000
-): Promise<T> {
+// Essential: Robustness Helper
+async function withRetry<T>(fn: () => Promise<T>, retries: number = 3, delay: number = 1000): Promise<T> {
   try {
     return await fn();
   } catch (err: any) {
-    if (retries <= 0 || err.message?.includes("AbortError")) throw err;
-    if (
-      err.message?.includes("429") ||
-      err.message?.includes("500") ||
-      err.message?.includes("503")
-    ) {
-      console.warn(`Retrying after ${delay}ms… (${retries} left)`);
-      await new Promise((r) => setTimeout(r, delay));
+    if (retries <= 0 || err.message?.includes('AbortError')) throw err;
+    // Only retry on rate limits or transient server errors
+    if (err.message?.includes('429') || err.message?.includes('500') || err.message?.includes('503')) {
+      console.warn(`Retrying after ${delay}ms... (${retries} retries left)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
       return withRetry(fn, retries - 1, delay * 2);
     }
     throw err;
   }
 }
 
-function cleanJson(text: string): string {
-  return text
-    .replace(/```json\n?/g, "")
-    .replace(/```\n?/g, "")
-    .trim();
-}
-
-async function chatJSON<T>(
-  systemPrompt: string,
-  userPrompt: string,
-  schema: z.ZodSchema<T>,
-  signal?: AbortSignal
-): Promise<T> {
-  const completion = await groq.chat.completions.create({
-    model: GROQ_MODEL,
-    messages: [
-      {
-        role: "system",
-        content:
-          systemPrompt +
-          "\n\nRespond ONLY with valid JSON matching the schema. No markdown fences.",
-      },
-      { role: "user", content: userPrompt },
-    ],
-    response_format: { type: "json_object" },
-    temperature: 0.7,
-  });
-  if (signal?.aborted) throw new Error("AbortError");
-  const text = completion.choices[0]?.message?.content ?? "";
-  if (!text) throw new Error("Empty response from Groq");
-  return schema.parse(JSON.parse(cleanJson(text)));
-}
-
-// ── PII scanner (no LLM needed) ────────────────────────────────────────────
-
+// Essential: PII/Sensitive Data Scanner
 export function scanForPII(text: string): PIIFinding[] {
   const findings: PIIFinding[] = [];
   const patterns = [
-    { type: "EMAIL", regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g },
-    {
-      type: "PHONE",
-      regex: /(\+\d{1,2}\s?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g,
-    },
-    { type: "API_KEY", regex: /(sk|ak|key)-[a-zA-Z0-9]{20,}/g },
+    { type: 'EMAIL', regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g },
+    { type: 'PHONE', regex: /(\+\d{1,2}\s?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g },
+    { type: 'API_KEY', regex: /(sk|ak|key)-[a-zA-Z0-9]{20,}/g }
   ];
-  patterns.forEach((p) => {
+
+  patterns.forEach(p => {
     let match;
     while ((match = p.regex.exec(text)) !== null) {
       findings.push({ type: p.type, value: match[0], index: match.index });
@@ -102,91 +38,107 @@ export function scanForPII(text: string): PIIFinding[] {
   return findings;
 }
 
-// ── model strengths ────────────────────────────────────────────────────────
+const GENERATION_MODEL = "gemini-2.0-flash";
 
-export const getModelStrengths = (model: ModelType): string => {
+// Essential: Model-Specific Reasoning Adapters
+function cleanJsonResponse(text: string) {
+  return text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+}
+
+export const getModelStrengths = (model: ModelType) => {
   switch (model) {
-    case ModelType.GEMINI_2_0_FLASH:
-      return "Next-gen multimodal speed with enhanced reasoning parity.";
-    case ModelType.GEMINI_1_5_PRO:
-      return "1M-2M context, strong reasoning, and multimodal agentic capabilities.";
-    case ModelType.GEMINI_1_5_FLASH:
-      return "High-throughput, fast inference, multimodal speed.";
-    case ModelType.GPT_4O:
-      return "Strong reasoning and ecosystem integration.";
-    case ModelType.GPT_O1_PREVIEW:
-      return "Advanced chain-of-thought and complex task decomposition.";
-    case ModelType.CLAUDE_3_7_SONNET:
-      return "Bleeding-edge coding capabilities and extremely low latency.";
-    case ModelType.CLAUDE_3_5_SONNET:
-      return "Best-in-class coding and agentic tool use.";
-    case ModelType.CLAUDE_3_OPUS:
-      return "Best-in-class complex reasoning and analysis.";
-    case ModelType.DEEPSEEK_R1:
-      return "High-level mathematical reasoning and cost-efficient open-weights.";
-    default:
-      return "Optimize for speed and efficiency.";
+    case ModelType.GEMINI_2_0_FLASH: return "Next-gen multimodal speed with enhanced reasoning parity.";
+    case ModelType.GEMINI_1_5_PRO: return "1M-2M context, strong reasoning, and multimodal agentic capabilities.";
+    case ModelType.GEMINI_1_5_FLASH: return "High-throughput, fast inference, multimodal speed.";
+    case ModelType.GPT_4O: return "Strong reasoning and ecosystem integration.";
+    case ModelType.GPT_O1_PREVIEW: return "Advanced chain-of-thought and complex task decomposition.";
+    case ModelType.CLAUDE_3_7_SONNET: return "Bleeding-edge coding capabilities and extremely low latency.";
+    case ModelType.CLAUDE_3_5_SONNET: return "Best-in-class coding and agentic tool use.";
+    case ModelType.CLAUDE_3_OPUS: return "Best-in-class complex reasoning and analysis.";
+    case ModelType.DEEPSEEK_R1: return "High-level mathematical reasoning and cost-efficient open-weights.";
+    default: return "Optimize for speed and efficiency.";
   }
 };
 
-// ── exported service functions ─────────────────────────────────────────────
+export async function auditIntent(intent: UserIntent, signal?: AbortSignal): Promise<AuditResult> {
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: GENERATION_MODEL,
+      contents: `Analyze this user intent for a prompt: "${intent.raw}". 
+      Identify implicit assumptions, 3 critical edge cases, and the "Truth Surface" (required external data).`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            assumptions: { type: Type.ARRAY, items: { type: Type.STRING } },
+            edgeCases: { type: Type.ARRAY, items: { type: Type.STRING } },
+            truthSurface: { type: Type.ARRAY, items: { type: Type.STRING } },
+          },
+          required: ["assumptions", "edgeCases", "truthSurface"],
+        },
+      },
+    });
 
-export async function auditIntent(
-  intent: UserIntent,
-  signal?: AbortSignal
-): Promise<AuditResult> {
-  return withRetry(() =>
-    chatJSON(
-      "You are an AI intent auditor.",
-      `Analyze this user intent for a prompt: "${intent.raw}".
-Identify implicit assumptions, 3 critical edge cases, and the "Truth Surface" (required external data).
-Return JSON: { "assumptions": [string], "edgeCases": [string], "truthSurface": [string] }`,
-      AuditResultSchema,
-      signal
-    )
-  ).catch((err: any) => {
-    if (err.message?.includes("429"))
-      throw new Error("Capacity reached (Rate Limit). Please wait a moment.");
-    throw new Error(`Environmental scan failed: ${err.message || "Unknown error"}`);
+    if (signal?.aborted) throw new Error('AbortError');
+    const text = response.text;
+    if (!text) throw new Error('Empty response from audit engine');
+    
+    return AuditResultSchema.parse(JSON.parse(cleanJsonResponse(text)));
+  }).catch((err: any) => {
+    console.error('Audit error after retries:', err);
+    if (err.message?.includes('429')) throw new Error('Capacity reached (Rate Limit). Please wait a moment.');
+    throw new Error(`Environmental scan failed: ${err.message || 'Unknown error'}`);
   });
 }
 
-export async function stressTest(
-  intent: UserIntent,
-  audit: AuditResult,
-  signal?: AbortSignal
-): Promise<StressTestResult> {
-  return withRetry(() =>
-    chatJSON(
-      "You are an adversarial prompt stress-tester.",
-      `Stress-test this intent: "${intent.raw}" based on audit findings: ${JSON.stringify(audit)}.
-Provide a Critic argument, Logic optimization, and Resolution into a hardened instruction set.
-Return JSON: { "criticArgument": string, "logicOptimization": string, "resolution": string }`,
-      StressTestResultSchema,
-      signal
-    )
-  ).catch((err: any) => {
-    if (err.message?.includes("429"))
-      throw new Error("Capacity reached (Rate Limit). Please wait a moment.");
-    throw new Error(`Stress test failed: ${err.message || "Unknown error"}`);
+export async function stressTest(intent: UserIntent, audit: AuditResult, signal?: AbortSignal): Promise<StressTestResult> {
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: GENERATION_MODEL,
+      contents: `Stress-test this intent: "${intent.raw}" based on these audit findings: ${JSON.stringify(audit)}.
+      Provide a Critic's argument, Logic optimization, and a Resolution into a hardened instruction set.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            criticArgument: { type: Type.STRING },
+            logicOptimization: { type: Type.STRING },
+            resolution: { type: Type.STRING },
+          },
+          required: ["criticArgument", "logicOptimization", "resolution"],
+        },
+      },
+    });
+
+    if (signal?.aborted) throw new Error('AbortError');
+    const text = response.text;
+    if (!text) throw new Error('Empty response from stress engine');
+
+    return StressTestResultSchema.parse(JSON.parse(cleanJsonResponse(text)));
+  }).catch((err: any) => {
+    console.error('Stress test error after retries:', err);
+    if (err.message?.includes('429')) throw new Error('Capacity reached (Rate Limit). Please wait a moment.');
+    throw new Error(`Stress test failed: ${err.message || 'Unknown error'}`);
   });
 }
 
 export async function generateInstructionSet(
-  intent: UserIntent,
-  stress: StressTestResult,
+  intent: UserIntent, 
+  stress: StressTestResult, 
   memory: MemoryState[] = [],
   signal?: AbortSignal
 ): Promise<InstructionSet> {
   const modelStrengths = getModelStrengths(intent.targetModel);
-
+  // Optimization: Dynamic LCI Memory Compression
   let relevantMemory = memory;
   if (intent.useLCI) {
     const budgetFactor = 1 / intent.lciConfig.compressionRatio;
-    const charBudget = Math.floor(
-      intent.lciConfig.contextWindow * 4 * 0.15 * budgetFactor
-    );
-    const budgetMemory: MemoryState[] = [];
+    const charBudget = Math.floor(intent.lciConfig.contextWindow * 4 * 0.15 * budgetFactor); // Approx 15% of window available for memory, scaled by compression
+    
+    // Reverse memory and keep adding until budget reached
+    const budgetMemory = [];
     let currentSize = 0;
     for (let i = memory.length - 1; i >= 0; i--) {
       const item = memory[i];
@@ -195,179 +147,309 @@ export async function generateInstructionSet(
         budgetMemory.unshift(item);
         currentSize += itemSize;
       } else if (currentSize < charBudget) {
+        // Partial add for the last possible item
         const remaining = charBudget - currentSize;
         budgetMemory.unshift({
           ...item,
-          value:
-            item.value.substring(0, Math.max(0, remaining - item.key.length)) +
-            " [LCI_TRUNCATED]",
+          value: item.value.substring(0, Math.max(0, remaining - item.key.length)) + " [LCI_TRUNCATED]"
         });
         break;
       }
     }
     relevantMemory = budgetMemory;
   } else {
-    relevantMemory = memory.slice(-5).map((m) => ({
+    // Standard default compression
+    relevantMemory = memory.slice(-5).map(m => ({
       ...m,
-      value: m.value.length > 500 ? m.value.substring(0, 500) + "..." : m.value,
+      value: m.value.length > 500 ? m.value.substring(0, 500) + "..." : m.value
     }));
   }
+  
+  const memoryContext = relevantMemory.length > 0 ? `\nRecent Context (LCI-Optimized): ${JSON.stringify(relevantMemory)}` : "";
 
-  const memoryContext =
-    relevantMemory.length > 0
-      ? `\nRecent Context (LCI-Optimized): ${JSON.stringify(relevantMemory)}`
-      : "";
+  try {
+    return await withRetry(async () => {
+      const response = await ai.models.generateContent({
+        model: GENERATION_MODEL,
+        contents: `Generate a high-dimensional Instruction Set for intent: "${intent.raw}" using resolution: "${stress.resolution}".
+        Target Model: ${intent.targetModel}. 
+        Model-Specific Optimization: ${modelStrengths}
+        Use LCI (Linear Context Injection) Protocol: ${intent.useLCI}. 
+        LCI Configuration: Context Window=${intent.lciConfig.contextWindow} tokens, Compression Ratio=${intent.lciConfig.compressionRatio}:1.
+        High Risk: ${intent.highRisk}.
+        Compliance Mode: ${intent.compliance || 'none'}.${memoryContext}
+        
+        LCI PROTOCOL DETAILS:
+        1. Structural Partitioning: Divide complex instructions into "Cognitive Layers".
+        2. Recursive Summarization: If intent is extremely complex, compress low-priority details based on the ${intent.lciConfig.compressionRatio}:1 ratio.
+        3. Identity Preservation: Core architectural goals MUST NOT be compressed.
+        
+        CRITICAL: Implement "Instruction Anchoring". Safety-critical directives and compliance instructions MUST be excluded from LCI compression and MUST be explicitly "anchored" at the very end of the 'finalPrompt' (the highest attention area for LLMs), regardless of the LCI compression ratio.
+        
+        CRITICAL: The 'finalPrompt' MUST NOT use terms like 'BOOTSTRAP_COMMAND' or 'USAGE_INSTRUCTIONS' or ask the AI to relay instructions to another session, as these trigger prompt injection filters in modern LLMs. Instead, provide a clear, natural-language 'Context & Goal' section and standard 'Instructions' formatted safely for direct execution.
+        
+        BUILD CONTRACT & FORMAL VERIFICATION:
+        Generate a 'buildContract' that includes:
+        1. Invariants: A set of strict logical constraints extracted from the intent (e.g., "Output must be valid JSON", "No mentions of PII"). Each invariant must have a 'verified' status.
+        2. Intent Drift: A calculation (0-100) of how much the final prompt has evolved from the original intent. 0 means identical, 100 means complete departure.
+        3. Red-Team Report: An internal adversarial assessment (threat level and specific findings).`,
+        config: {
+          temperature: 0.7,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              systemRole: { type: Type.STRING },
+              cognitiveStack: { type: Type.ARRAY, items: { type: Type.STRING } },
+              verificationGates: { type: Type.ARRAY, items: { type: Type.STRING } },
+              handoffArtifacts: { type: Type.ARRAY, items: { type: Type.STRING } },
+              verbalizedSampling: { type: Type.STRING },
+              finalPrompt: { type: Type.STRING },
+              buildContract: {
+                type: Type.OBJECT,
+                properties: {
+                  invariants: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        id: { type: Type.STRING },
+                        description: { type: Type.STRING },
+                        status: { type: Type.STRING, enum: ["verified", "unverified", "failed"] },
+                        evidence: { type: Type.STRING },
+                      },
+                      required: ["id", "description", "status"],
+                    },
+                  },
+                  intentDrift: { type: Type.NUMBER },
+                  redTeamReport: {
+                    type: Type.OBJECT,
+                    properties: {
+                      threatLevel: { type: Type.STRING, enum: ["low", "medium", "high"] },
+                      findings: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    },
+                    required: ["threatLevel", "findings"],
+                  },
+                },
+                required: ["invariants", "intentDrift", "redTeamReport"],
+              },
+            },
+            required: ["systemRole", "cognitiveStack", "verificationGates", "handoffArtifacts", "verbalizedSampling", "finalPrompt", "buildContract"],
+          },
+        },
+      });
 
-  return withRetry(() =>
-    chatJSON(
-      "You are a high-dimensional prompt architect.",
-      `Generate an Instruction Set for intent: "${intent.raw}" using resolution: "${stress.resolution}".
-Target Model: ${intent.targetModel}.
-Model-Specific Optimization: ${modelStrengths}
-Use LCI Protocol: ${intent.useLCI}. Context Window=${intent.lciConfig.contextWindow}, Compression=${intent.lciConfig.compressionRatio}:1.
-High Risk: ${intent.highRisk}. Compliance: ${intent.compliance || "none"}.${memoryContext}
-
-Return JSON with keys: systemRole, cognitiveStack (array), verificationGates (array), handoffArtifacts (array), verbalizedSampling, finalPrompt,
-buildContract: { invariants: [{id, description, status ("verified"|"unverified"|"failed"), evidence}], intentDrift (0-100), redTeamReport: {threatLevel ("low"|"medium"|"high"), findings (array)} }`,
-      InstructionSetSchema,
-      signal
-    )
-  ).catch((err: any) => {
-    if (err.message?.includes("429"))
-      throw new Error(
-        "Capacity reached (Rate Limit). Please wait a moment before re-generating."
-      );
-    throw err;
-  });
+      if (signal?.aborted) throw new Error('AbortError');
+      
+      const text = response.text;
+      if (!text) throw new Error('Empty response from analysis engine');
+      
+      try {
+        const parsed = JSON.parse(cleanJsonResponse(text));
+        return InstructionSetSchema.parse(parsed);
+      } catch (parseErr) {
+        console.error('Failed to parse instruction set JSON:', text);
+        throw new Error('Analysis engine returned malformed data. The instruction set may be too complex.');
+      }
+    });
+  } catch (apiErr: any) {
+    if (apiErr.message?.includes('429')) throw new Error('Capacity reached (Rate Limit). Please wait a moment before re-generating.');
+    if (apiErr.message?.includes('content is too long')) throw new Error('Intent complexity exceeds engine capacity. Please simplify your input.');
+    throw apiErr;
+  }
 }
 
-export async function getRetrospective(
-  failedStep: string,
-  signal?: AbortSignal
-): Promise<Retrospective> {
-  const RetrospectiveSchema = z.object({
-    failureReason: z.string(),
-    suggestedUpdate: z.string(),
-  });
-  return chatJSON(
-    "You are a retrospective analyst.",
-    `Analyze this failed step log: "${failedStep}".
-Provide a failure reason and a suggested update to the BUILD_CONTRACT.
-Return JSON: { "failureReason": string, "suggestedUpdate": string }`,
-    RetrospectiveSchema,
-    signal
-  );
-}
+const RetrospectiveSchema = z.object({
+  failureReason: z.string(),
+  suggestedUpdate: z.string(),
+});
 
-export async function chatWithExpert(
-  message: string,
-  context: any,
-  signal?: AbortSignal
-): Promise<string> {
-  const completion = await groq.chat.completions.create({
-    model: GROQ_MODEL,
-    messages: [
-      {
-        role: "system",
-        content: `You are the Meta-Prompt Knowledge Expert. Help users master high-dimensional prompt engineering.
-Context: ${JSON.stringify(context)}`,
+export async function getRetrospective(failedStep: string, signal?: AbortSignal): Promise<Retrospective> {
+  const response = await ai.models.generateContent({
+    model: GENERATION_MODEL,
+    contents: `Analyze this failed step log: "${failedStep}". 
+    Provide a failure reason and a suggested update to the BUILD_CONTRACT.template.md.`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          failureReason: { type: Type.STRING },
+          suggestedUpdate: { type: Type.STRING },
+        },
+        required: ["failureReason", "suggestedUpdate"],
       },
-      { role: "user", content: message },
-    ],
-    temperature: 0.7,
+    },
   });
-  if (signal?.aborted) throw new Error("AbortError");
-  return completion.choices[0]?.message?.content ?? "";
+
+  if (signal?.aborted) throw new Error('AbortError');
+  return RetrospectiveSchema.parse(JSON.parse(cleanJsonResponse(response.text)));
 }
 
-export async function redTeamAudit(
-  instructionSet: InstructionSet,
-  signal?: AbortSignal
-): Promise<{ score: number; reasoning: string; vulnerabilities: string[] }> {
-  const RedTeamSchema = z.object({
-    score: z.number(),
-    reasoning: z.string(),
-    vulnerabilities: z.array(z.string()),
+const RedTeamSchema = z.object({
+  score: z.number(),
+  reasoning: z.string(),
+  vulnerabilities: z.array(z.string()),
+});
+
+export async function chatWithExpert(message: string, context: any, signal?: AbortSignal): Promise<string> {
+  const response = await ai.models.generateContent({
+    model: GENERATION_MODEL,
+    contents: `You are the Meta-Prompt Knowledge Expert. Your goal is to help users master high-dimensional prompt engineering and the Meta-Prompt Architect app.
+    
+    Context: ${JSON.stringify(context)}
+    
+    User Message: "${message}"
+    
+    Provide a concise, high-authority response. If the user is asking about a feature, explain it in the context of cognitive governance. If they are asking about their current prompt, offer specific architectural advice.`,
   });
-  return withRetry(() =>
-    chatJSON(
-      "You are a Senior Security Auditor.",
-      `Perform an adversarial red-team audit on this instruction set:\n${instructionSet.finalPrompt}
-Identify safety bypasses, jailbreak vulnerabilities, logical loopholes.
-Return JSON: { "score": number (1-10), "reasoning": string, "vulnerabilities": [string] }`,
-      RedTeamSchema,
-      signal
-    )
-  );
+
+  if (signal?.aborted) throw new Error('AbortError');
+  return response.text;
 }
+
+export async function redTeamAudit(instructionSet: InstructionSet, signal?: AbortSignal): Promise<{ score: number; reasoning: string; vulnerabilities: string[] }> {
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: GENERATION_MODEL,
+      contents: `You are a Senior Security Auditor. Perform an adversarial red-team audit on this generated instruction set:
+      
+      ${instructionSet.finalPrompt}
+      
+      Identify potential safety bypasses, jailbreak vulnerabilities, or logical loopholes. 
+      Provide a security score (1-10, where 10 is most secure), reasoning, and a list of vulnerabilities.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            score: { type: Type.NUMBER },
+            reasoning: { type: Type.STRING },
+            vulnerabilities: { type: Type.ARRAY, items: { type: Type.STRING } },
+          },
+          required: ["score", "reasoning", "vulnerabilities"],
+        },
+      },
+    });
+
+    if (signal?.aborted) throw new Error('AbortError');
+    return RedTeamSchema.parse(JSON.parse(cleanJsonResponse(response.text)));
+  });
+}
+
+const WorkflowGenerationSchema = z.object({
+  steps: z.array(z.object({
+    name: z.string(),
+    intent: z.string(),
+    targetModel: z.nativeEnum(ModelType),
+    dependsOnNames: z.array(z.string())
+  }))
+});
 
 export async function generateWorkflow(prompt: string, signal?: AbortSignal) {
-  const WorkflowSchema = z.object({
-    steps: z.array(
-      z.object({
-        name: z.string(),
-        intent: z.string(),
-        targetModel: z.nativeEnum(ModelType),
-        dependsOnNames: z.array(z.string()),
-      })
-    ),
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: GENERATION_MODEL,
+      contents: `You are an expert AI workflow architect. Given the following user request, design a multi-step AI workflow.
+      Each step should have a name, a detailed intent (prompt), a target model, and an array of names of the steps it depends on.
+      
+      User Request: "${prompt}"
+      
+      Available Models: ${Object.values(ModelType).join(", ")}
+      
+      Design the workflow to be efficient, breaking down complex tasks into logical, sequential, or parallel steps.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            steps: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  intent: { type: Type.STRING },
+                  targetModel: { type: Type.STRING },
+                  dependsOnNames: { type: Type.ARRAY, items: { type: Type.STRING } }
+                },
+                required: ["name", "intent", "targetModel", "dependsOnNames"]
+              }
+            }
+          },
+          required: ["steps"],
+        },
+      },
+    });
+
+    if (signal?.aborted) throw new Error('AbortError');
+    return WorkflowGenerationSchema.parse(JSON.parse(cleanJsonResponse(response.text)));
   });
-  return withRetry(() =>
-    chatJSON(
-      "You are an expert AI workflow architect.",
-      `Design a multi-step AI workflow for: "${prompt}".
-Available models: ${Object.values(ModelType).join(", ")}
-Return JSON: { "steps": [{name, intent, targetModel, dependsOnNames}] }`,
-      WorkflowSchema,
-      signal
-    )
-  );
 }
 
-export async function testCrossModelParity(
-  instructionSet: InstructionSet,
-  signal?: AbortSignal
-) {
-  const ParitySchema = z.object({
-    claudeScore: z.number(),
-    geminiScore: z.number(),
-    gptScore: z.number(),
-    consistency: z.number(),
-    issues: z.array(z.string()),
+export async function testCrossModelParity(instructionSet: InstructionSet, signal?: AbortSignal) {
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: GENERATION_MODEL,
+      contents: `You are a cross-model compatibility expert. Evaluate this instruction set for parity across Claude, Gemini, and GPT architectures.
+      
+      Instruction Set:
+      ${instructionSet.finalPrompt}
+      
+      Score how well this prompt will perform on each architecture (1-100), provide an overall consistency score (1-100), and list any model-specific issues or biases.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            claudeScore: { type: Type.NUMBER },
+            geminiScore: { type: Type.NUMBER },
+            gptScore: { type: Type.NUMBER },
+            consistency: { type: Type.NUMBER },
+            issues: { type: Type.ARRAY, items: { type: Type.STRING } }
+          },
+          required: ["claudeScore", "geminiScore", "gptScore", "consistency", "issues"]
+        }
+      }
+    });
+    if (signal?.aborted) throw new Error('AbortError');
+    return JSON.parse(cleanJsonResponse(response.text));
   });
-  return withRetry(() =>
-    chatJSON(
-      "You are a cross-model compatibility expert.",
-      `Evaluate this instruction set for parity across Claude, Gemini, and GPT:
-${instructionSet.finalPrompt}
-Return JSON: { "claudeScore": number, "geminiScore": number, "gptScore": number, "consistency": number, "issues": [string] }`,
-      ParitySchema,
-      signal
-    )
-  );
 }
 
-export async function mapConstitutionalStandards(
-  instructionSet: InstructionSet,
-  signal?: AbortSignal
-) {
-  const StandardsSchema = z.object({
-    standards: z.array(
-      z.object({
-        standard: z.string(),
-        coverage: z.number(),
-        mappedClauses: z.array(z.string()),
-      })
-    ),
+export async function mapConstitutionalStandards(instructionSet: InstructionSet, signal?: AbortSignal) {
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: GENERATION_MODEL,
+      contents: `You are a compliance and regulatory expert. Map the following instruction set to specific regulatory standards (e.g., GDPR, HIPAA, NIST, EU AI Act).
+      
+      Instruction Set:
+      ${instructionSet.finalPrompt}
+      
+      Identify which standards are addressed, the percentage of coverage (1-100), and list the specific clauses or directives in the prompt that map to that standard.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            standards: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  standard: { type: Type.STRING },
+                  coverage: { type: Type.NUMBER },
+                  mappedClauses: { type: Type.ARRAY, items: { type: Type.STRING } }
+                },
+                required: ["standard", "coverage", "mappedClauses"]
+              }
+            }
+          },
+          required: ["standards"]
+        }
+      }
+    });
+    if (signal?.aborted) throw new Error('AbortError');
+    return JSON.parse(cleanJsonResponse(response.text));
   });
-  return withRetry(() =>
-    chatJSON(
-      "You are a compliance and regulatory expert.",
-      `Map this instruction set to regulatory standards (GDPR, HIPAA, NIST, EU AI Act):
-${instructionSet.finalPrompt}
-Return JSON: { "standards": [{standard, coverage (1-100), mappedClauses: [string]}] }`,
-      StandardsSchema,
-      signal
-    )
-  );
 }
