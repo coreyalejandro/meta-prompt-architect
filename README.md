@@ -2,7 +2,7 @@
 
 **A three-phase prompt governance pipeline that turns natural language intent into structured, auditable, AI-ready instruction sets.**
 
-Live app: https://ai.studio/apps/34d58bd0-0f42-4058-b4ab-265711ccde10
+Live app: [https://ai.studio/apps/34d58bd0-0f42-4058-b4ab-265711ccde10](https://meta-prompt-architect-1045681641454.us-west2.run.app)
 
 ---
 
