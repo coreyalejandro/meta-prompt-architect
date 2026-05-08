@@ -1,7 +1,3 @@
-<div align="center">
-<img width="1200" height="475" alt="Meta-Prompt Architect banner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
 # Meta-Prompt Architect
 
 **A three-phase prompt governance pipeline that turns natural language intent into structured, auditable, AI-ready instruction sets.**
