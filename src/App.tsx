@@ -752,85 +752,92 @@ ${instructionSet.finalPrompt}
                     </div>
 
                     {intent.useLCI && (
-                      <div className="space-y-4">
-                        <div className="flex gap-2">
-                          {[
-                            { label: 'Standard', window: 128000, ratio: 4 },
-                            { label: 'Deep', window: 512000, ratio: 8 },
-                            { label: 'Infinite', window: 1000000, ratio: 16 },
-                            { label: 'Custom', window: intent.lciConfig.contextWindow, ratio: intent.lciConfig.compressionRatio }
-                          ].map(preset => {
-                            const isActive = preset.label === 'Custom' 
-                              ? (![128000, 512000, 1000000].includes(intent.lciConfig.contextWindow) || (intent.lciConfig.contextWindow === 128000 && intent.lciConfig.compressionRatio !== 4) || (intent.lciConfig.contextWindow === 512000 && intent.lciConfig.compressionRatio !== 8) || (intent.lciConfig.contextWindow === 1000000 && intent.lciConfig.compressionRatio !== 16))
-                              : (intent.lciConfig.contextWindow === preset.window && intent.lciConfig.compressionRatio === preset.ratio);
-
-                            return (
+                      <div className="space-y-6 pt-2">
+                        {/* Context Window Section */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-[#888] uppercase font-bold tracking-widest">Context Window</span>
+                            <span className="text-[10px] text-[#00ff00] font-mono">{intent.lciConfig.contextWindow.toLocaleString()} TKNS</span>
+                          </div>
+                          <div className="flex gap-1">
+                            {[128000, 512000, 1000000].map(val => (
                               <button
-                                key={preset.label}
-                                onClick={() => {
-                                  if (preset.label !== 'Custom') {
-                                    setIntent(prev => ({
-                                      ...prev,
-                                      lciConfig: { contextWindow: preset.window, compressionRatio: preset.ratio }
-                                    }));
-                                  } else {
-                                    // If clicking custom, just ensure values are slightly off-preset to force sliders visible if they weren't
-                                    if (!isActive) {
-                                      setIntent(prev => ({
-                                        ...prev,
-                                        lciConfig: { ...prev.lciConfig, compressionRatio: prev.lciConfig.compressionRatio + 0.1 }
-                                      }));
-                                      // Immediately round back if needed, but the condition above handles it
-                                    }
-                                  }
-                                }}
-                                className={`flex-1 py-2 px-2 text-[9px] font-bold uppercase border transition-all ${
-                                  isActive
-                                    ? 'bg-[#00ff00]/10 border-[#00ff00] text-[#00ff00]'
-                                    : 'bg-[#0a0a0a] border-[#1a1a1a] text-[#888] hover:text-[#aaa]'
+                                key={val}
+                                onClick={() => setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, contextWindow: val } }))}
+                                className={`flex-1 py-1.5 text-[9px] font-bold uppercase border transition-all ${
+                                  intent.lciConfig.contextWindow === val 
+                                    ? 'bg-[#00ff00]/10 border-[#00ff00] text-[#00ff00]' 
+                                    : 'bg-[#0a0a0a] border-[#1a1a1a] text-[#555] hover:text-[#888]'
                                 }`}
                               >
-                                {preset.label}
+                                {val >= 1000000 ? '1M' : `${val / 1000}K`}
                               </button>
-                            );
-                          })}
+                            ))}
+                            <button
+                              onClick={() => {
+                                if ([128000, 512000, 1000000].includes(intent.lciConfig.contextWindow)) {
+                                  setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, contextWindow: prev.lciConfig.contextWindow + 1 } }));
+                                }
+                              }}
+                              className={`flex-1 py-1.5 text-[9px] font-bold uppercase border transition-all ${
+                                ![128000, 512000, 1000000].includes(intent.lciConfig.contextWindow)
+                                  ? 'bg-[#00ff00]/10 border-[#00ff00] text-[#00ff00]'
+                                  : 'bg-[#0a0a0a] border-[#1a1a1a] text-[#555] hover:text-[#888]'
+                              }`}
+                            >
+                              Custom
+                            </button>
+                          </div>
+                          <input 
+                            type="range" min="8000" max="2000000" step="8000"
+                            value={intent.lciConfig.contextWindow}
+                            onChange={(e) => setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, contextWindow: Number(e.target.value) } }))}
+                            className="w-full h-1 bg-[#1a1a1a] appearance-none cursor-pointer accent-[#00ff00] rounded-full"
+                          />
                         </div>
 
-                        <AnimatePresence>
-                          {(intent.useLCI) && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              className="space-y-4 pt-2 border-t border-[#1a1a1a] mt-4"
+                        {/* Compression Ratio Section */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-[#888] uppercase font-bold tracking-widest">Compression Ratio</span>
+                            <span className="text-[10px] text-[#00ff00] font-mono">{intent.lciConfig.compressionRatio.toFixed(1)}:1</span>
+                          </div>
+                          <div className="flex gap-1">
+                            {[2, 4, 8, 16].map(val => (
+                              <button
+                                key={val}
+                                onClick={() => setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, compressionRatio: val } }))}
+                                className={`flex-1 py-1.5 text-[9px] font-bold uppercase border transition-all ${
+                                  intent.lciConfig.compressionRatio === val 
+                                    ? 'bg-[#00ff00]/10 border-[#00ff00] text-[#00ff00]' 
+                                    : 'bg-[#0a0a0a] border-[#1a1a1a] text-[#555] hover:text-[#888]'
+                                }`}
+                              >
+                                {val}x
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => {
+                                if ([2, 4, 8, 16].includes(intent.lciConfig.compressionRatio)) {
+                                  setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, compressionRatio: prev.lciConfig.compressionRatio + 0.1 } }));
+                                }
+                              }}
+                              className={`flex-1 py-1.5 text-[9px] font-bold uppercase border transition-all ${
+                                ![2, 4, 8, 16].includes(intent.lciConfig.compressionRatio)
+                                  ? 'bg-[#00ff00]/10 border-[#00ff00] text-[#00ff00]'
+                                  : 'bg-[#0a0a0a] border-[#1a1a1a] text-[#555] hover:text-[#888]'
+                              }`}
                             >
-                              <div className="space-y-2">
-                                <div className="flex justify-between text-[10px] uppercase font-bold">
-                                  <span className="text-[#888]">Context Window</span>
-                                  <span className="text-[#00ff00]">{intent.lciConfig.contextWindow.toLocaleString()}</span>
-                                </div>
-                                <input 
-                                  type="range" min="8000" max="1000000" step="8000"
-                                  value={intent.lciConfig.contextWindow}
-                                  onChange={(e) => setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, contextWindow: Number(e.target.value) } }))}
-                                  className="w-full h-1.5 bg-[#1a1a1a] appearance-none cursor-pointer accent-[#00ff00] rounded-full"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <div className="flex justify-between text-[10px] uppercase font-bold">
-                                  <span className="text-[#888]">Compression Ratio</span>
-                                  <span className="text-[#00ff00]">{intent.lciConfig.compressionRatio.toFixed(1)}:1</span>
-                                </div>
-                                <input 
-                                  type="range" min="1" max="20" step="0.5"
-                                  value={intent.lciConfig.compressionRatio}
-                                  onChange={(e) => setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, compressionRatio: Number(e.target.value) } }))}
-                                  className="w-full h-1.5 bg-[#1a1a1a] appearance-none cursor-pointer accent-[#00ff00] rounded-full"
-                                />
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+                              Custom
+                            </button>
+                          </div>
+                          <input 
+                            type="range" min="1" max="32" step="0.5"
+                            value={intent.lciConfig.compressionRatio}
+                            onChange={(e) => setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, compressionRatio: Number(e.target.value) } }))}
+                            className="w-full h-1 bg-[#1a1a1a] appearance-none cursor-pointer accent-[#00ff00] rounded-full"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1572,39 +1579,6 @@ ${instructionSet.finalPrompt}
                           </div>
                         </div>
 
-                        {crossModelParity && (
-                          <div className="bg-[#050505] border border-[#1a1a1a] p-6 rounded-sm">
-                            <h3 className="text-xs font-bold text-[#0088ff] uppercase tracking-wider mb-4 flex items-center gap-2">
-                              <Layers size={16} /> Cross-Model Parity Testing
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                              <div className="bg-[#0a0a0a] border border-[#1a1a1a] p-5 rounded-sm text-center">
-                                <p className="text-[11px] text-[#888] uppercase mb-2 font-bold">Claude Score</p>
-                                <p className="text-2xl font-bold text-[#e0e0e0]">{crossModelParity.claudeScore}/100</p>
-                              </div>
-                              <div className="bg-[#0a0a0a] border border-[#1a1a1a] p-5 rounded-sm text-center">
-                                <p className="text-[11px] text-[#888] uppercase mb-2 font-bold">Gemini Score</p>
-                                <p className="text-2xl font-bold text-[#e0e0e0]">{crossModelParity.geminiScore}/100</p>
-                              </div>
-                              <div className="bg-[#0a0a0a] border border-[#1a1a1a] p-5 rounded-sm text-center">
-                                <p className="text-[11px] text-[#888] uppercase mb-2 font-bold">GPT Score</p>
-                                <p className="text-2xl font-bold text-[#e0e0e0]">{crossModelParity.gptScore}/100</p>
-                              </div>
-                              <div className="bg-[#0a0a0a] border border-[#0088ff]/30 p-5 rounded-sm text-center">
-                                <p className="text-[11px] text-[#0088ff] uppercase mb-2 font-bold">Consistency</p>
-                                <p className="text-2xl font-bold text-[#0088ff]">{crossModelParity.consistency}/100</p>
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-[11px] text-[#888] uppercase mb-3 font-bold">Identified Issues & Biases</p>
-                              <ul className="list-disc pl-5 space-y-2">
-                                {crossModelParity.issues.map((issue, idx) => (
-                                  <li key={idx} className="text-sm text-[#ccc]">{issue}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          </div>
-                        )}
                       </motion.div>
                     )}
                     {activeTab === 'compliance' && (
@@ -1726,14 +1700,87 @@ ${instructionSet.finalPrompt}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
+                        className="space-y-8"
                       >
-                        {instructionSet.buildContract ? (
-                          <AuditTrail contract={instructionSet.buildContract} />
-                        ) : (
+                        {instructionSet.buildContract && (
+                          <div className="bg-[#050505] border border-[#1a1a1a] rounded-sm overflow-hidden">
+                            <AuditTrail contract={instructionSet.buildContract} />
+                          </div>
+                        )}
+
+                        {crossModelParity ? (
+                          <div className="bg-[#050505] border border-[#1a1a1a] p-6 rounded-sm">
+                            <div className="flex items-center justify-between mb-8">
+                              <h3 className="text-sm font-bold text-[#e0e0e0] uppercase tracking-wider flex items-center gap-2">
+                                <Layers size={18} className="text-[#00ff00]" /> Cross-Model Parity Dashboard
+                              </h3>
+                              <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                  <p className="text-[9px] text-[#666] uppercase font-bold">Overall Consistency</p>
+                                  <p className="text-xl font-black text-[#00ff00]">{crossModelParity.consistency}%</p>
+                                </div>
+                                <div className="w-12 h-12 rounded-full border-2 border-[#00ff00]/30 flex items-center justify-center p-1">
+                                  <div 
+                                    className="w-full h-full rounded-full border-2 border-[#00ff00]" 
+                                    style={{ clipPath: `inset(${100 - crossModelParity.consistency}% 0 0 0)` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                              {[
+                                { name: 'Claude 3.7', score: crossModelParity.claudeScore, color: '#f6814d', icon: 'C' },
+                                { name: 'Gemini 2.0', score: crossModelParity.geminiScore, color: '#00ff00', icon: 'G' },
+                                { name: 'GPT-4o', score: crossModelParity.gptScore, color: '#74aa9c', icon: 'P' }
+                              ].map((m) => (
+                                <div key={m.name} className="space-y-3">
+                                  <div className="flex justify-between items-end">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-6 h-6 rounded-sm bg-[#1a1a1a] border border-[#333] flex items-center justify-center text-[10px] font-bold" style={{ color: m.color }}>
+                                        {m.icon}
+                                      </div>
+                                      <span className="text-[11px] font-bold text-[#aaa] uppercase">{m.name}</span>
+                                    </div>
+                                    <span className="text-sm font-black text-white tabular-nums">{m.score}%</span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-[#1a1a1a] rounded-full overflow-hidden">
+                                    <motion.div 
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${m.score}%` }}
+                                      className="h-full rounded-full"
+                                      style={{ backgroundColor: m.color }}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="mt-10 pt-6 border-t border-[#1a1a1a]">
+                              <div className="flex items-center gap-2 mb-4">
+                                <AlertCircle size={14} className="text-[#ff9900]" />
+                                <h4 className="text-[10px] text-[#888] uppercase font-bold tracking-widest">Architectural Drift & Model Biases</h4>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {crossModelParity.issues.map((issue, idx) => (
+                                  <div key={idx} className="flex gap-3 p-4 bg-[#0a0a0a] border border-[#1a1a1a] rounded-sm group hover:border-[#333] transition-colors">
+                                    <div className="w-1 h-1 rounded-full bg-[#ff9900] mt-1.5 flex-shrink-0" />
+                                    <p className="text-[11px] text-[#ccc] leading-relaxed">{issue}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        ) : !instructionSet.buildContract ? (
                           <div className="text-center py-20 border border-dashed border-[#1a1a1a] rounded-sm bg-[#050505]">
                             <ShieldCheck size={48} className="mx-auto text-[#222] mb-4" />
                             <h3 className="text-sm font-bold text-[#666] uppercase tracking-[0.3em]">Verification Buffer Empty</h3>
                             <p className="text-[11px] text-[#444] mt-2 max-w-sm mx-auto">Build Contract and formal verification assets are generated during the final synthesis phase.</p>
+                          </div>
+                        ) : (
+                          <div className="p-12 text-center border-t border-[#1a1a1a]">
+                            <div className="animate-spin w-8 h-8 border-2 border-[#00ff00] border-t-transparent rounded-full mx-auto mb-4" />
+                            <p className="text-[10px] text-[#666] uppercase font-bold">Performing adversarial cross-model audit...</p>
                           </div>
                         )}
                       </motion.div>
