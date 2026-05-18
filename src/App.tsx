@@ -18,6 +18,9 @@ import { storage } from './utils/storage';
 import { CrossModelParityResult, ConstitutionalMappingResult } from './types';
 
 import Tooltip from './components/Tooltip';
+import FacultyPresets from './components/FacultyPresets';
+import type { FacultyPreset } from './components/FacultyPresets';
+import OCSplashScreen from './components/OCSplashScreen';
 
 export default function App() {
   const [intent, setIntent] = useState<UserIntent>({
@@ -50,6 +53,8 @@ export default function App() {
   const [constitutionalMapping, setConstitutionalMapping] = useState<ConstitutionalMappingResult | null>(null);
   const [roiAnalytics, setRoiAnalytics] = useState<{ timeSaved: number, costSaved: number, totalGenerations: number } | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [showOCSplash, setShowOCSplash] = useState(true);
+  const [showFacultyPresets, setShowFacultyPresets] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'prompt' | 'sampling' | 'audit' | 'docs' | 'history' | 'workflow' | 'analytics' | 'compliance' | 'verification'>('prompt');
   const [showDocs, setShowDocs] = useState(false);
@@ -154,6 +159,11 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [intent.raw, activeTab]);
+
+  const handleSelectFacultyPreset = (preset: FacultyPreset) => {
+    setIntent(prev => ({ ...prev, raw: preset.intent, targetModel: preset.targetModel as ModelType }));
+    setShowFacultyPresets(false);
+  };
 
   const handleReset = () => {
     if (abortControllerRef.current) {
@@ -653,6 +663,13 @@ ${instructionSet.finalPrompt}
                     aria-label="Get expert advice"
                   >
                     <Sparkles size={10} /> Expert_Advice
+                  </button>
+                  <button
+                    onClick={() => setShowFacultyPresets(true)}
+                    className="text-[10px] text-[#c6a679] uppercase font-bold flex items-center gap-1 hover:text-[#d4b88a] transition-colors"
+                    aria-label="Browse OC Faculty Templates"
+                  >
+                    <Sparkles size={10} /> OC_Faculty_Templates
                   </button>
                 </div>
                 <Tooltip className="w-full" text="Enter your raw AI intent or prompt idea here. Be as descriptive as possible.">
@@ -1880,6 +1897,8 @@ ${instructionSet.finalPrompt}
         }
       `}</style>
       </div>
+      <OCSplashScreen isVisible={showOCSplash} onDismiss={() => setShowOCSplash(false)} />
+      <FacultyPresets isVisible={showFacultyPresets} onClose={() => setShowFacultyPresets(false)} onSelectPreset={handleSelectFacultyPreset} />
     </ErrorBoundary>
   );
 }
