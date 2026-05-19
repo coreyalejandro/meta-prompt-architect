@@ -1,19 +1,21 @@
 /* ============================================================================
-   OC META-PROMPT ARCHITECT (Faculty Prompt Lab) — Theme Override Layer
-
-   INSTRUCTIONS: Add this file to src/ and import it in src/main.tsx
+   OC FACULTY PROMPT LAB — Theme Override Layer
+   
+   INSTRUCTIONS: Add this file to src/ and import it in src/main.tsx 
    AFTER the existing index.css import:
-
+   
      import './index.css';
      import './index.oc-theme.css';  // ADD THIS LINE
-
-   This layer overrides the cyberpunk green/black aesthetic with Odessa College's
-   navy/gold institutional colors while preserving all layout, animations, and
-   functionality.
+   
+   This layer overrides the cyberpunk green palette with Odessa College's
+   navy/gold institutional colors while preserving all layout and functionality.
    ============================================================================ */
 
-/* ─── OC Brand Variables ─── */
+@import "tailwindcss";
+
+/* ─── CSS Variable Overrides ─── */
 :root {
+  /* OC Primary Palette */
   --oc-navy: #2d3e50;
   --oc-navy-light: #3d5060;
   --oc-navy-dark: #1e2b3a;
@@ -22,118 +24,366 @@
   --oc-gold-dark: #8b7347;
   --oc-cream: #faf8f5;
   --oc-cream-dark: #f5f0e8;
-  --oc-border: #2a3a4a;
-  --oc-border-light: #3a4a5a;
-  --oc-text: #e8e2d8;
-  --oc-text-muted: #9aa8b4;
-  --oc-surface: #121c26;
-  --oc-surface-raised: #1a2635;
-  --oc-surface-overlay: #0d1620;
+  --oc-border: #e8e2d8;
+  --oc-text: #2c2c2c;
+  --oc-text-muted: #666666;
+  --oc-text-light: #999999;
+  --oc-white: #ffffff;
+  --oc-red: #c0392b;
+  --oc-red-light: #e74c3c;
+  --oc-blue: #3498db;
+  
+  /* Override the selection color */
+  --selection-bg: #c6a679;
+  --selection-text: #2d3e50;
 }
 
 /* ─── Global Background ─── */
 html, body, #root {
-  background-color: var(--oc-surface) !important;
-  color: var(--oc-text) !important;
+  background-color: var(--oc-cream) !important;
 }
 
-/* ─── Neon green → OC gold ─── */
-/* All the #00ff00 buttons, borders, text */
-[style*="color: rgb(0, 255, 0)"],
-[style*="color:#00ff00"],
-.text-\[#00ff00\] {
+/* ─── Selection ─── */
+::selection {
+  background-color: var(--oc-gold) !important;
+  color: var(--oc-navy) !important;
+}
+
+/* ─── Main App Container ─── */
+.min-h-screen.font-mono {
+  background-color: var(--oc-cream) !important;
+  color: var(--oc-text) !important;
+  font-family: 'Source Sans Pro', system-ui, sans-serif !important;
+}
+
+/* ─── Header ─── */
+header.sticky {
+  background-color: var(--oc-white) !important;
+  border-color: var(--oc-border) !important;
+  box-shadow: 0 1px 3px rgba(45, 62, 80, 0.08) !important;
+}
+
+header.sticky h1 {
+  color: var(--oc-navy) !important;
+}
+
+header.sticky p {
+  color: var(--oc-text-muted) !important;
+}
+
+/* Logo box */
+header .w-8.h-8.bg-\[\#00ff00\] {
+  background-color: var(--oc-gold) !important;
+  color: var(--oc-navy) !important;
+}
+
+/* Export buttons in header */
+header button[class*="hover:text-[\#00ff00]"] {
+  color: var(--oc-text-muted) !important;
+}
+header button[class*="hover:text-[\#00ff00]"]:hover {
+  color: var(--oc-gold-dark) !important;
+}
+
+header button[class*="text-[\#00ff00]"] {
+  color: var(--oc-gold-dark) !important;
+}
+header button[class*="text-[\#00ff00]"]:hover {
+  color: var(--oc-navy) !important;
+}
+
+/* Theme toggle buttons */
+header button[class*="text-[\#aaa]"]:hover,
+header button[class*="hover:text-[\#aaa]"]:hover {
   color: var(--oc-gold) !important;
 }
 
-[style*="background-color: rgb(0, 255, 0)"],
-[style*="background:#00ff00"],
-.bg-\[#00ff00\] {
+/* History & Help buttons */
+header button[class*="text-[\#888]"] {
+  color: var(--oc-text-muted) !important;
+}
+header button[class*="text-[\#888]"]:hover {
+  color: var(--oc-gold-dark) !important;
+}
+
+header button[class*="text-[\#00ff00]"] svg {
+  color: var(--oc-gold-dark) !important;
+}
+
+/* SYSTEM_READY indicator */
+header .bg-\[\#00ff00\].animate-pulse {
   background-color: var(--oc-gold) !important;
-  color: var(--oc-navy-dark) !important;
 }
 
-[style*="border-color: rgb(0, 255, 0)"],
-.border-\[#00ff00\] {
-  border-color: var(--oc-gold) !important;
-}
-
-/* Hover gold */
-.hover\:bg-\[#00cc00\]:hover {
-  background-color: var(--oc-gold-light) !important;
-}
-
-.hover\:text-\[#00cc00\]:hover,
-.hover\:border-\[#00cc00\]:hover {
-  color: var(--oc-gold-light) !important;
-  border-color: var(--oc-gold-light) !important;
-}
-
-/* Focus ring on textarea */
-.focus\:border-\[#00ff00\]:focus {
-  border-color: var(--oc-gold) !important;
-}
-
-/* ─── Background surfaces: deep blacks → OC navy ─── */
-.bg-\[#050505\],
-.bg-\[#0a0a0a\],
-.bg-\[#0f0f0f\] {
-  background-color: var(--oc-surface-overlay) !important;
-}
-
-.bg-\[#1a1a1a\] {
-  background-color: var(--oc-surface-raised) !important;
-}
-
-/* ─── Borders: dark → navy ─── */
-.border-\[#1a1a1a\] {
+/* ─── Main Content Sections ─── */
+main.w-full > section,
+main.w-full > div > section {
+  background-color: var(--oc-white) !important;
   border-color: var(--oc-border) !important;
 }
 
-/* ─── Execute Pipeline button ─── */
-button[aria-label="Execute Build Pipeline"] {
+/* ─── Input Textarea ─── */
+textarea[class*="bg-[\#050505]"] {
+  background-color: var(--oc-cream-dark) !important;
+  border-color: var(--oc-border) !important;
+  color: var(--oc-text) !important;
+}
+textarea[class*="bg-[\#050505]"]:focus {
+  border-color: var(--oc-gold) !important;
+  box-shadow: 0 0 0 2px rgba(198, 166, 121, 0.2) !important;
+}
+textarea[class*="bg-[\#050505]"]::placeholder {
+  color: var(--oc-text-light) !important;
+}
+
+/* ─── Labels ─── */
+label[class*="text-[\#aaa]"],
+span[class*="text-[\#aaa]"] {
+  color: var(--oc-text-muted) !important;
+}
+
+/* ─── Checkboxes ─── */
+/* LCI checkbox */
+.w-5.h-5.border-\[\#333\] {
+  border-color: var(--oc-border) !important;
+}
+.w-5.h-5.bg-\[\#00ff00\].border-\[\#00ff00\] {
   background-color: var(--oc-gold) !important;
-  color: var(--oc-navy-dark) !important;
+  border-color: var(--oc-gold) !important;
+}
+.w-5.h-5.bg-\[\#00ff00\] > div {
+  background-color: var(--oc-navy) !important;
 }
 
-button[aria-label="Execute Build Pipeline"]:hover {
-  background-color: var(--oc-gold-light) !important;
+/* High Risk checkbox */
+.w-5.h-5.bg-\[\#ff0000\].border-\[\#ff0000\] {
+  background-color: var(--oc-red) !important;
+  border-color: var(--oc-red) !important;
 }
 
-/* ─── Red (#ff0000) → warm amber for warnings/errors ─── */
-.text-\[#ff0000\],
-[class*="text-red"] {
-  color: #e07b5a !important;
+/* ─── Generate Button ─── */
+button[class*="bg-[\#00ff00]"][class*="text-[\#000]"] {
+  background-color: var(--oc-navy) !important;
+  color: var(--oc-white) !important;
+}
+button[class*="bg-[\#00ff00]"][class*="text-[\#000]"]:hover {
+  background-color: var(--oc-navy-light) !important;
+}
+button[class*="bg-[\#00ff00]"][class*="text-[\#000]"]:disabled {
+  opacity: 0.5 !important;
 }
 
-.bg-\[#ff0000\],
-.bg-\[#1a0000\] {
-  background-color: rgba(224, 123, 90, 0.12) !important;
+/* ─── Secondary Buttons ─── */
+button[class*="border-[\#ff0000]"][class*="text-[\#ff0000]"] {
+  border-color: var(--oc-red) !important;
+  color: var(--oc-red) !important;
+}
+button[class*="border-[\#ff0000]"][class*="text-[\#ff0000]"]:hover {
+  background-color: var(--oc-red) !important;
+  color: var(--oc-white) !important;
 }
 
-.border-\[#ff0000\] {
-  border-color: #e07b5a !important;
+/* ─── Cards / Panels ─── */
+[class*="bg-[\#0f0f0f]"] {
+  background-color: var(--oc-white) !important;
 }
 
-/* ─── Section headers ─── */
-.uppercase.tracking-wider {
-  letter-spacing: 0.12em;
+[class*="bg-[\#050505]"] {
+  background-color: var(--oc-cream-dark) !important;
 }
 
-/* ─── Scrollbar ─── */
+/* ─── Results Boxes ─── */
+[class*="bg-[\#0f0f0f]"] h2,
+[class*="bg-[\#0f0f0f]"] h3 {
+  color: var(--oc-navy) !important;
+}
+
+[class*="bg-[\#0f0f0f]"] p,
+[class*="bg-[\#0f0f0f]"] span {
+  color: var(--oc-text) !important;
+}
+
+/* ─── Audit Results ─── */
+[class*="text-[\#00ff00]"] {
+  color: var(--oc-gold-dark) !important;
+}
+
+/* ─── Green accent text ─── */
+[class*="text-[\#00cc00]"] {
+  color: var(--oc-gold) !important;
+}
+
+/* ─── Info / Help icons ─── */
+[class*="text-[\#666]"] {
+  color: var(--oc-text-light) !important;
+}
+
+/* ─── PII Alert ─── */
+[class*="bg-[\#1a0505]"] {
+  background-color: #fdf2f2 !important;
+  border-color: var(--oc-red-light) !important;
+}
+[class*="bg-[\#1a0505]"] span,
+[class*="bg-[\#1a0505]"] [class*="text-[\#ff0000]"] {
+  color: var(--oc-red) !important;
+}
+button[class*="bg-[\#ff0000]"] {
+  background-color: var(--oc-red) !important;
+}
+button[class*="bg-[\#ff0000]"]:hover {
+  background-color: var(--oc-red-light) !important;
+}
+
+/* ─── Loading / Progress ─── */
+[class*="text-[\#00ff00]"] {
+  color: var(--oc-gold-dark) !important;
+}
+
+/* Progress bar accent */
+.accent-\[\#00ff00\] {
+  accent-color: var(--oc-gold) !important;
+}
+
+/* ─── Range Sliders ─── */
+input[type="range"] {
+  accent-color: var(--oc-gold) !important;
+}
+
+/* ─── History Panel ─── */
+[class*="bg-[\#050505]"] [class*="hover:border-[\#00ff00]"]:hover {
+  border-color: var(--oc-gold) !important;
+}
+
+/* ─── Memory Buffer ─── */
+[class*="text-[\#0088ff]"] {
+  color: var(--oc-blue) !important;
+}
+
+/* ─── Custom Scrollbar ─── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: var(--oc-surface-overlay) !important;
+  background: var(--oc-cream-dark);
 }
-
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--oc-border) !important;
+  background: var(--oc-border);
+  border-radius: 3px;
 }
-
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--oc-border-light) !important;
+  background: var(--oc-gold);
 }
 
-/* ─── Selected text ─── */
-::selection {
-  background-color: var(--oc-gold) !important;
-  color: var(--oc-navy-dark) !important;
+/* ─── Tooltips ─── */
+[class*="bg-[\#1a1a1a]"] {
+  background-color: var(--oc-navy) !important;
+}
+
+/* ─── Tab Buttons ─── */
+[class*="bg-[\#00ff00]"][class*="text-[\#000]"] {
+  background-color: var(--oc-navy) !important;
+  color: var(--oc-white) !important;
+}
+
+/* ─── Tags / Badges ─── */
+span[class*="bg-[\#1a1a1a]"] {
+  background-color: var(--oc-cream-dark) !important;
+  color: var(--oc-text-muted) !important;
+}
+
+/* ─── Profile Buttons (Fast, Deep, etc.) ─── */
+button[class*="bg-[\#00ff00]"][class*="text-[\#000]"] {
+  background-color: var(--oc-navy) !important;
+  color: var(--oc-white) !important;
+}
+button[class*="bg-[\#0f0f0f]"][class*="border-[\#1a1a1a]"] {
+  background-color: var(--oc-cream-dark) !important;
+  border-color: var(--oc-border) !important;
+  color: var(--oc-text-muted) !important;
+}
+button[class*="bg-[\#0f0f0f]"][class*="border-[\#1a1a1a]"]:hover {
+  background-color: var(--oc-cream) !important;
+  color: var(--oc-text) !important;
+}
+
+/* ─── Error States ─── */
+[class*="text-[\#ff0000]"] {
+  color: var(--oc-red) !important;
+}
+
+/* ─── Knowledge Expert (Floating) ─── */
+/* Keep the knowledge expert as-is since it's a floating overlay */
+
+/* ─── Manual / Help Panel ─── */
+[class*="bg-[\#0a0a0a]"] {
+  background-color: var(--oc-white) !important;
+}
+
+/* ─── Workflow Builder ─── */
+.react-flow {
+  background-color: var(--oc-cream) !important;
+}
+
+/* ─── Motion / Animation overrides ─── */
+[class*="selection:bg-[\#00ff00]"] {
+  selection-background-color: var(--oc-gold) !important;
+}
+
+/* ─── Font overrides for elegance ─── */
+h1, h2, h3 {
+  font-family: 'Crimson Pro', Georgia, serif !important;
+}
+
+/* Keep monospace for data/code displays */
+code, pre, .font-mono {
+  font-family: 'Source Sans Pro', ui-monospace, monospace !important;
+}
+
+/* ─── Audit View Styling ─── */
+.audit-view [class*="text-[\#00ff00]"] {
+  color: var(--oc-gold-dark) !important;
+}
+
+/* ─── Constitutional Mapping ─── */
+.constitutional-mapping [class*="text-[\#00ff00]"] {
+  color: var(--oc-gold-dark) !important;
+}
+
+/* ─── ROI Analytics ─── */
+.roi-analytics [class*="text-[\#00ff00]"] {
+  color: var(--oc-gold-dark) !important;
+}
+
+/* ─── Verification Gates ─── */
+.verification-gates [class*="text-[\#00ff00]"] {
+  color: var(--oc-gold-dark) !important;
+}
+
+/* ─── Final Prompt Display ─── */
+.final-prompt [class*="bg-[\#050505]"] {
+  background-color: var(--oc-cream-dark) !important;
+}
+
+/* ─── Copy Button ─── */
+button[aria-label="Copy" i],
+button[title="Copy" i] {
+  color: var(--oc-text-muted) !important;
+}
+button[aria-label="Copy" i]:hover,
+button[title="Copy" i]:hover {
+  color: var(--oc-gold) !important;
+}
+
+/* ─── Toast / Notification overrides ─── */
+[class*="toast"],
+[role="alert"] {
+  border-radius: 8px !important;
+}
+
+/* ─── Print styles ─── */
+@media print {
+  .min-h-screen.font-mono {
+    background-color: white !important;
+    color: black !important;
+  }
 }

@@ -1,226 +1,304 @@
 import { useState } from 'react';
-import { X, FileText, BookOpen, MessageSquare, HelpCircle, Shield, Users } from 'lucide-react';
+import { BookOpen, FileText, MessageCircle, ClipboardCheck, Shield, Users, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 
-export interface FacultyPreset {
+export interface Preset {
   id: string;
   title: string;
-  category: string;
   description: string;
   icon: React.ReactNode;
   intent: string;
   targetModel: string;
+  category: 'assessment' | 'content' | 'policy' | 'support';
 }
 
-export const FACULTY_PRESETS: FacultyPreset[] = [
+export const FACULTY_PRESETS: Preset[] = [
   {
     id: 'essay-prompt',
-    title: 'Essay Assignment Prompt',
-    category: 'Writing',
-    description: 'AI-ready essay prompt with clear rubric, AI-use tier, and cognitive scaffolding for students.',
+    title: 'Essay Prompt Designer',
+    description: 'Craft clear, rigorous essay prompts with built-in rubric alignment and AI-use tier declarations.',
     icon: <FileText size={18} />,
+    category: 'assessment',
     targetModel: 'gemini-1.5-pro',
-    intent: `Create a college-level essay assignment prompt for [COURSE NAME] on the topic of [TOPIC].
+    intent: `Design a college-level essay prompt for an [INSERT COURSE NAME] course that:
 
-Requirements:
-- Clear thesis requirement (human-generated, AI not permitted for this section)
-- AI-use tier: AI-ENHANCED — students may use AI for grammar, outline organization, and citation formatting ONLY
-- Word count: 1,000–1,500 words
-- Include a 5-criterion rubric (thesis, evidence, organization, mechanics, citations)
-- Include a process documentation requirement (outline + rough draft + revision log)
-- Include a self-assessment checklist
-- Language must be accessible to neurodivergent learners (plain language, no ambiguous instructions)
-- Make all expectations explicit — no implied conventions`
+1. Uses the AI-Enhanced tier (students may use AI for grammar/structure but must generate original arguments)
+2. Includes a clear thesis requirement marked as HUMAN-GENERATED ONLY
+3. Specifies 3-5 credible sources with proper citation
+4. Defines a 4-level rubric: Exemplary, Proficient, Developing, Beginning
+5. Includes process documentation requirements (outline, draft stages)
+6. Sets the tone as analytical and evidence-based
+7. Provides 2-3 sample thesis statements as examples (not for student use)
+
+The prompt should be scaffolded for first-generation college students and include a self-assessment checklist.`,
   },
   {
-    id: 'rubric-builder',
-    title: 'Rubric Builder',
-    category: 'Assessment',
-    description: 'Generate a complete, leveled rubric for any assignment type with AI-use tiers clearly defined.',
+    id: 'rubric-generator',
+    title: 'Rubric Generator',
+    description: 'Generate AI-use-tiered rubrics with transparent criteria for any assignment type.',
+    icon: <ClipboardCheck size={18} />,
+    category: 'assessment',
+    targetModel: 'gemini-1.5-pro',
+    intent: `Create a complete assignment rubric for [INSERT ASSIGNMENT TYPE] with the following structure:
+
+AI-USE TIER: [SELECT: AI-Assisted / AI-Enhanced / AI-Free]
+
+CRITERIA (5 dimensions):
+1. Content Knowledge / Understanding
+2. Critical Thinking / Analysis
+3. Organization / Structure
+4. Communication / Mechanics
+5. Process / Documentation
+
+Each criterion must have:
+- A brief description of what is being assessed
+- 4 performance levels (Exemplary 4, Proficient 3, Developing 2, Beginning 1)
+- Specific, observable indicators at each level
+- A note on which levels permit AI assistance (if applicable)
+
+The rubric should:
+- Be copy-paste ready for syllabus inclusion
+- Include a total points row
+- Have space for instructor comments
+- Be accessible to students with diverse learning needs`,
+  },
+  {
+    id: 'discussion-builder',
+    title: 'Discussion Question Builder',
+    description: 'Create Socratic discussion questions optimized for 8-week term pacing.',
+    icon: <MessageCircle size={18} />,
+    category: 'content',
+    targetModel: 'gemini-1.5-pro',
+    intent: `Generate 5 discussion questions for Week [INSERT WEEK] of an 8-week [INSERT COURSE NAME] course.
+
+Requirements:
+1. Questions must build on previous weeks' content (scaffolded progression)
+2. At least 2 questions should require citation of course materials
+3. At least 1 question should be a "devil's advocate" position requiring students to defend a counter-argument
+4. 1 question should connect course content to real-world application in West Texas / Permian Basin context
+5. Each question should have a suggested response length (150-300 words)
+6. Include peer response prompts (students must respond to 2 classmates)
+7. Add a participation rubric (Initial Post + 2 Peer Responses = Full Credit)
+
+The questions should be accessible to students with varying levels of prior subject knowledge.`,
+  },
+  {
+    id: 'quiz-author',
+    title: 'Quiz & Assessment Author',
+    description: 'Design formative assessments with cognitive safety checks and clear learning targets.',
     icon: <BookOpen size={18} />,
-    targetModel: 'gemini-1.5-pro',
-    intent: `Build a detailed grading rubric for [ASSIGNMENT TYPE] in [COURSE NAME].
-
-Requirements:
-- 4 performance levels: Exemplary, Proficient, Developing, Beginning
-- 5–7 assessment dimensions relevant to the assignment type
-- Each dimension must include: point range, behavioral descriptors, and example evidence
-- Include an AI-use tier declaration for each dimension (AI-Free / AI-Enhanced / AI-Assisted)
-- Include a feedback section template for instructors
-- Rubric must be screen-reader accessible (table format with clear headers)
-- Total points: 100
-- Output as a complete, copy-paste-ready document`
-  },
-  {
-    id: 'discussion-prompt',
-    title: 'Discussion Board Prompt',
-    category: 'Engagement',
-    description: 'Structured discussion prompt that drives critical thinking with clear participation expectations.',
-    icon: <MessageSquare size={18} />,
+    category: 'assessment',
     targetModel: 'gemini-2.0-flash',
-    intent: `Create a structured online discussion board prompt for [COURSE NAME] on [TOPIC].
+    intent: `Create a [INSERT FORMAT: multiple choice / short answer / mixed] assessment for [INSERT COURSE NAME] covering [INSERT TOPICS].
 
-Requirements:
-- Opening question that requires critical analysis, not just recall
-- 3 follow-up prompts for deeper engagement
-- AI-use policy: AI NOT permitted for initial post; AI-Enhanced permitted for reply responses
-- Participation requirements: 1 original post (250–300 words) + 2 substantive peer replies
-- Grading criteria (10 points): content quality (6), engagement quality (2), timeliness (2)
-- Include sentence starters for neurodivergent or ELL students
-- Include a "what not to do" section to prevent shallow responses
-- Accessible, plain-language instructions throughout`
-  },
-  {
-    id: 'quiz-generator',
-    title: 'Quiz / Knowledge Check',
-    category: 'Assessment',
-    description: 'Generate a fair, bias-checked quiz with multiple question formats and clear answer keys.',
-    icon: <HelpCircle size={18} />,
-    targetModel: 'gemini-1.5-pro',
-    intent: `Generate a 10-question knowledge check for [COURSE NAME] covering [TOPIC/UNIT].
+ASSESSMENT SPECIFICATIONS:
+- Total items: [INSERT NUMBER, e.g., 10-15]
+- Time limit: [INSERT, e.g., 20-30 minutes]
+- AI-Use Tier: AI-Free (independent demonstration required)
 
-Requirements:
-- Mix of question types: 4 multiple-choice, 3 short answer, 2 true/false with justification, 1 scenario-based
-- Each question tied to a specific learning objective
-- Bloom's Taxonomy distribution: 30% recall, 40% comprehension/application, 30% analysis/synthesis
-- Include complete answer key with rationale for each correct answer
-- Flag any questions that may contain cultural bias or ambiguity
-- AI-use policy: This is an AI-Free assessment — all responses must be student-generated
-- Include accessibility note: quiz should be screen-reader compatible and allow extended time
-- Avoid trick questions; all ambiguity must be eliminated`
+EACH ITEM MUST INCLUDE:
+1. The question stem
+2. Correct answer(s)
+3. 3 plausible distractors (for MC items)
+4. The specific learning objective being assessed
+5. Bloom's taxonomy level (Remember, Understand, Apply, Analyze, Evaluate, Create)
+6. A brief explanation of why the correct answer is correct
+
+FORMATIVE FOCUS:
+- Include 2 "metacognitive check" items asking students to explain their reasoning
+- Add a self-reflection question at the end: "What concept from this assessment do you need to review further?"
+
+The assessment should be rigorous but fair for community college students in an 8-week term.`,
   },
   {
     id: 'ai-policy',
-    title: 'Course AI-Use Policy',
-    category: 'Policy',
-    description: 'Generate a fair, transparent course-level AI-use policy aligned with the Instructional Integrity Framework.',
+    title: 'Syllabus AI Policy Writer',
+    description: 'Generate course-specific AI use policies aligned with OC institutional standards.',
     icon: <Shield size={18} />,
+    category: 'policy',
     targetModel: 'gemini-1.5-pro',
-    intent: `Draft a comprehensive AI-use policy for [COURSE NAME] at [INSTITUTION NAME].
+    intent: `Write a course-specific AI use policy for [INSERT COURSE NAME] that aligns with Odessa College's institutional framework.
 
-Requirements:
-- 3-tier structure: AI-Free assignments, AI-Enhanced assignments, AI-Assisted assignments
-- Clear definitions of each tier with concrete examples
-- Explicit list of permitted AI tools (e.g., grammar checkers, citation formatters)
-- Explicit list of prohibited AI uses (e.g., generating thesis statements, writing body paragraphs)
-- Academic integrity consequences section
-- Student disclosure requirement: students must document any AI use
-- Instructor transparency section: how AI was used in course design
-- Plain-language throughout — accessible to all literacy levels
-- Include an FAQ section (5 common student questions)
-- Align with the Odessa College Instructional Integrity Framework principles`
+POLICY STRUCTURE:
+1. PHILOSOPHY STATEMENT (1 paragraph)
+   - Frame AI as a tool for learning, not a replacement for thinking
+   - Reference OC's commitment to academic integrity and student success
+
+2. AI-USE TIERS (clear table)
+   - AI-Free: Assignments where independent mastery must be demonstrated
+   - AI-Enhanced: AI permitted for grammar, structure, citation formatting only
+   - AI-Assisted: AI may be used as a collaborative tool with process documentation
+
+3. ASSIGNMENT-SPECIFIC RULES
+   - List each major assignment and its designated AI-use tier
+   - Explain the rationale for each designation
+
+4. CITATION REQUIREMENTS
+   - How to cite AI tools when used
+   - Consequences of uncited AI use
+
+5. SUPPORT RESOURCES
+   - Where students can get help understanding the policy
+   - Tutoring center contact information
+
+The tone should be supportive and educational, not punitive. The policy should be clear enough that a first-generation college student can understand it without confusion.`,
   },
   {
     id: 'tutoring-script',
-    title: 'AI Tutoring Script',
-    category: 'Support',
-    description: 'Socratic tutoring prompt that guides students to discover answers rather than providing them directly.',
+    title: 'Tutoring Center Script',
+    description: 'Create structured tutoring session guides aligned with course learning objectives.',
     icon: <Users size={18} />,
-    targetModel: 'gemini-2.0-flash',
-    intent: `Create a Socratic AI tutoring system prompt for helping students with [SUBJECT/TOPIC] in [COURSE NAME].
+    category: 'support',
+    targetModel: 'gemini-1.5-pro',
+    intent: `Design a structured tutoring session guide for [INSERT SUBJECT] tutors at Odessa College's Learning Resource Center.
 
-Requirements:
-- Persona: patient, encouraging academic tutor — never condescending
-- Approach: Socratic method — guide students with questions, never give direct answers
-- When a student is stuck: offer a hint, then a follow-up question, not the solution
-- Accessibility: adjust language complexity based on student's demonstrated level
-- For math/logic: always ask the student to show their work before giving feedback
-- Include explicit refusal to write essays, complete assignments, or take assessments for students
-- Include a "check for understanding" prompt after each concept
-- Trauma-informed language: avoid language that implies failure or shame
-- End each session with a summary of what the student learned and next steps`
-  }
+SESSION STRUCTURE (50 minutes):
+
+OPENING (5 min):
+- Greeting and rapport-building script
+- Question: "What brought you in today?" with follow-up prompts
+- Review of student's current assignment and course materials
+
+DIAGNOSTIC (10 min):
+- Quick assessment questions to identify knowledge gaps
+- Script for distinguishing between "I don't understand the concept" vs "I don't understand the assignment"
+
+INSTRUCTION (25 min):
+- Socratic questioning sequence (do not give answers, guide discovery)
+- Scaffolded practice problems with decreasing support
+- Check-for-understanding prompts every 5 minutes
+
+CLOSING (10 min):
+- Summary: student explains what they learned in their own words
+- Action items: what the student will do before next session
+- Scheduling follow-up if needed
+
+TUTOR GUIDELINES:
+- Accessibility accommodations checklist
+- When to refer to instructor vs. when to continue tutoring
+- Documentation requirements for Supplemental Instruction tracking
+- Cultural sensitivity reminders for OC's diverse student population`,
+  },
 ];
 
 interface FacultyPresetsProps {
+  onSelectPreset: (preset: Preset) => void;
   isVisible: boolean;
   onClose: () => void;
-  onSelectPreset: (preset: FacultyPreset) => void;
 }
 
-const tierColors: Record<string, string> = {
-  Writing: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  Assessment: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  Engagement: 'bg-green-500/20 text-green-300 border-green-500/30',
-  Policy: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-  Support: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
-};
-
-export default function FacultyPresets({ isVisible, onClose, onSelectPreset }: FacultyPresetsProps) {
-  const [expanded, setExpanded] = useState<string | null>(null);
+export default function FacultyPresets({ onSelectPreset, isVisible, onClose }: FacultyPresetsProps) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>('all');
 
   if (!isVisible) return null;
 
+  const categories = [
+    { id: 'all', label: 'All Presets' },
+    { id: 'assessment', label: 'Assessment' },
+    { id: 'content', label: 'Content' },
+    { id: 'policy', label: 'Policy' },
+    { id: 'support', label: 'Support' },
+  ];
+
+  const filteredPresets = activeCategory === 'all'
+    ? FACULTY_PRESETS
+    : FACULTY_PRESETS.filter(p => p.category === activeCategory);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div
-        className="bg-[#0f0f0f] border border-[#c6a679]/30 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
-        style={{ boxShadow: '0 0 60px rgba(198,166,121,0.12)' }}
-      >
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-[#2d3e50]/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      
+      {/* Modal */}
+      <div className="relative bg-[#faf8f5] rounded-xl border border-[#e8e2d8] shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#1a1a1a]">
-          <div>
-            <div className="text-[10px] text-[#c6a679] uppercase tracking-[0.3em] font-bold mb-1">
-              OC Faculty Prompt Lab
+        <div className="p-6 border-b border-[#e8e2d8] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#2d3e50] rounded-lg flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-[#c6a679]" />
             </div>
-            <h2 className="text-xl font-bold text-white uppercase tracking-wider">
-              Faculty Presets
-            </h2>
-            <p className="text-[12px] text-[#888] mt-1">
-              Select a template to pre-fill your intent. Customize before building.
-            </p>
+            <div>
+              <h2 
+                className="text-lg font-bold text-[#2d3e50]"
+                style={{ fontFamily: 'var(--font-crimson), Georgia, serif' }}
+              >
+                Faculty Prompt Lab
+              </h2>
+              <p className="text-xs text-[#8b7347]">Pre-built templates for Odessa College instruction</p>
+            </div>
           </div>
-          <button
+          <button 
             onClick={onClose}
-            className="text-[#666] hover:text-white transition-colors p-2"
-            aria-label="Close faculty presets"
+            className="text-[#999] hover:text-[#2d3e50] transition-colors text-sm"
           >
-            <X size={20} />
+            Close
           </button>
         </div>
 
-        {/* Preset List */}
-        <div className="overflow-y-auto flex-1 p-4 space-y-3">
-          {FACULTY_PRESETS.map((preset) => (
-            <div
-              key={preset.id}
-              className="border border-[#1a1a1a] rounded-xl overflow-hidden hover:border-[#c6a679]/40 transition-colors"
+        {/* Category Filter */}
+        <div className="px-6 pt-4 flex gap-2 flex-wrap">
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                activeCategory === cat.id
+                  ? 'bg-[#2d3e50] text-white'
+                  : 'bg-[#f5f0e8] text-[#555] hover:bg-[#e8e2d8]'
+              }`}
             >
-              <div
-                className="flex items-start gap-4 p-4 cursor-pointer"
-                onClick={() => setExpanded(expanded === preset.id ? null : preset.id)}
-              >
-                <div className="text-[#c6a679] mt-0.5 flex-shrink-0">{preset.icon}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-bold text-white uppercase tracking-wide">
-                      {preset.title}
-                    </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${tierColors[preset.category] ?? 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>
-                      {preset.category}
-                    </span>
-                  </div>
-                  <p className="text-[12px] text-[#888] mt-1 leading-relaxed">
-                    {preset.description}
-                  </p>
-                </div>
-              </div>
+              {cat.label}
+            </button>
+          ))}
+        </div>
 
-              {expanded === preset.id && (
-                <div className="px-4 pb-4 border-t border-[#1a1a1a] pt-3">
-                  <div className="bg-[#050505] rounded-lg p-3 mb-3">
-                    <div className="text-[10px] text-[#c6a679] uppercase tracking-widest mb-2 font-bold">
-                      Intent Preview
-                    </div>
-                    <pre className="text-[11px] text-[#aaa] whitespace-pre-wrap leading-relaxed font-mono">
+        {/* Presets List */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          {filteredPresets.map(preset => (
+            <div 
+              key={preset.id}
+              className="border border-[#e8e2d8] rounded-lg bg-white overflow-hidden transition-all hover:border-[#c6a679]"
+            >
+              <button
+                onClick={() => setExpandedId(expandedId === preset.id ? null : preset.id)}
+                className="w-full p-4 flex items-center gap-4 text-left"
+              >
+                <div className="w-9 h-9 bg-[#c6a679]/15 rounded-lg flex items-center justify-center text-[#c6a679] flex-shrink-0">
+                  {preset.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-[#2d3e50] text-sm">{preset.title}</h3>
+                  <p className="text-xs text-[#666] truncate">{preset.description}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-[10px] uppercase tracking-wider text-[#8b7347] bg-[#c6a679]/10 px-2 py-0.5 rounded">
+                    {preset.category}
+                  </span>
+                  {expandedId === preset.id ? <ChevronUp size={16} className="text-[#999]" /> : <ChevronDown size={16} className="text-[#999]" />}
+                </div>
+              </button>
+              
+              {expandedId === preset.id && (
+                <div className="px-4 pb-4">
+                  <div className="bg-[#faf8f5] border border-[#e8e2d8] rounded-lg p-4 mb-3">
+                    <p className="text-xs text-[#8b7347] uppercase tracking-wider mb-2 font-semibold">Prompt Preview</p>
+                    <pre className="text-xs text-[#444] whitespace-pre-wrap font-mono leading-relaxed max-h-40 overflow-y-auto">
                       {preset.intent}
                     </pre>
                   </div>
-                  <button
-                    onClick={() => onSelectPreset(preset)}
-                    className="w-full bg-[#c6a679] text-[#0f0f0f] py-2.5 text-xs font-bold uppercase tracking-widest hover:bg-[#d4b88a] transition-colors rounded-lg"
-                  >
-                    Use This Template
-                  </button>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-[#999]">Model: <span className="text-[#2d3e50] font-medium">{preset.targetModel}</span></span>
+                    <button
+                      onClick={() => onSelectPreset(preset)}
+                      className="bg-[#2d3e50] hover:bg-[#3d5060] text-white px-4 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-2"
+                    >
+                      <Sparkles size={14} />
+                      Use This Template
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -228,9 +306,9 @@ export default function FacultyPresets({ isVisible, onClose, onSelectPreset }: F
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-[#1a1a1a] text-center">
-          <p className="text-[10px] text-[#555] uppercase tracking-widest">
-            Customize any template after selecting · All presets follow OC Instructional Integrity Framework
+        <div className="p-4 border-t border-[#e8e2d8] bg-[#faf8f5] rounded-b-xl">
+          <p className="text-xs text-[#999] text-center">
+            Select a template to pre-fill your intent. Customize the bracketed [INSERT] fields before generating.
           </p>
         </div>
       </div>

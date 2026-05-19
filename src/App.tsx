@@ -19,7 +19,7 @@ import { CrossModelParityResult, ConstitutionalMappingResult } from './types';
 
 import Tooltip from './components/Tooltip';
 import FacultyPresets from './components/FacultyPresets';
-import type { FacultyPreset } from './components/FacultyPresets';
+import type { Preset as FacultyPreset } from './components/FacultyPresets';
 import OCSplashScreen from './components/OCSplashScreen';
 
 export default function App() {
@@ -122,6 +122,15 @@ export default function App() {
         abortControllerRef.current.abort();
       }
     };
+  }, []);
+
+  // ?mode=odessa — force OC splash + presets open for portfolio/hiring demos
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mode') === 'odessa') {
+      localStorage.removeItem('oc_splash_dismissed');
+      setShowOCSplash(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -1897,7 +1906,7 @@ ${instructionSet.finalPrompt}
         }
       `}</style>
       </div>
-      <OCSplashScreen isVisible={showOCSplash} onDismiss={() => setShowOCSplash(false)} />
+      <OCSplashScreen onDismiss={() => setShowOCSplash(false)} onOpenPresets={() => setShowFacultyPresets(true)} />
       <FacultyPresets isVisible={showFacultyPresets} onClose={() => setShowFacultyPresets(false)} onSelectPreset={handleSelectFacultyPreset} />
     </ErrorBoundary>
   );
