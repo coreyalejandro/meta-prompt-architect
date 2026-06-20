@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { z } from 'zod';
 import { UserIntent, AuditResult, StressTestResult, InstructionSet, ModelType, MemoryState, Retrospective, ThemeType, HistoryItem, PIIFinding, HistoryItemSchema, MemoryStateSchema } from './types';
 import KnowledgeExpert from './components/KnowledgeExpert';
-import { auditIntent, stressTest, generateInstructionSet, getRetrospective, scanForPII, redTeamAudit, testCrossModelParity, mapConstitutionalStandards } from './services/gemini';
+import { auditIntent, stressTest, generateInstructionSet, getRetrospective, scanForPII, redTeamAudit, testCrossModelParity, mapConstitutionalStandards, testPlaygroundPrompt } from './services/gemini';
 import { estimateCost } from './services/tokenEstimator';
-import { Terminal, Cpu, ShieldAlert, ShieldCheck, Zap, Save, RefreshCw, AlertCircle, BookOpen, Layers, CheckCircle2, FileCode, Printer, Eye, HelpCircle, History, Download, Sun, Moon, Monitor, Info, FileText, Sparkles, GitBranch, DollarSign, Copy, FileJson, Search, Scale, Activity, Archive } from 'lucide-react';
+import { Terminal, Cpu, ShieldAlert, ShieldCheck, Zap, Save, RefreshCw, AlertCircle, BookOpen, Layers, CheckCircle2, FileCode, Printer, Eye, HelpCircle, History, Download, Sun, Moon, Monitor, Info, FileText, Sparkles, GitBranch, DollarSign, Copy, FileJson, Search, Scale, Activity, Archive, Trash2 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { generateCursorRules } from './services/ideHandoff';
 import { generateExportBundle } from './utils/export';
@@ -18,9 +18,6 @@ import { storage } from './utils/storage';
 import { CrossModelParityResult, ConstitutionalMappingResult } from './types';
 
 import Tooltip from './components/Tooltip';
-import FacultyPresets from './components/FacultyPresets';
-import type { Preset as FacultyPreset } from './components/FacultyPresets';
-import OCSplashScreen from './components/OCSplashScreen';
 
 export default function App() {
   const [intent, setIntent] = useState<UserIntent>({
@@ -42,25 +39,33 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [memory, setMemory] = useState<MemoryState[]>([]);
+  const [expandedMemoryKeys, setExpandedMemoryKeys] = useState<Record<string, boolean>>({});
   const [failedStep, setFailedStep] = useState('');
   const [retrospective, setRetrospective] = useState<Retrospective | null>(null);
   const [isManualOpen, setIsManualOpen] = useState(true);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [piiFindings, setPiiFindings] = useState<PIIFinding[]>([]);
+  const [ignorePii, setIgnorePii] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [redTeamResults, setRedTeamResults] = useState<{ score: number; reasoning: string; vulnerabilities: string[] } | null>(null);
   const [crossModelParity, setCrossModelParity] = useState<CrossModelParityResult | null>(null);
   const [constitutionalMapping, setConstitutionalMapping] = useState<ConstitutionalMappingResult | null>(null);
   const [roiAnalytics, setRoiAnalytics] = useState<{ timeSaved: number, costSaved: number, totalGenerations: number } | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [showOCSplash, setShowOCSplash] = useState(true);
-  const [showFacultyPresets, setShowFacultyPresets] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'prompt' | 'sampling' | 'audit' | 'docs' | 'history' | 'workflow' | 'analytics' | 'compliance' | 'verification'>('prompt');
   const [showDocs, setShowDocs] = useState(false);
   const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [historyFilterDate, setHistoryFilterDate] = useState('');
+  const [showHardResetConfirm, setShowHardResetConfirm] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
+  const currentIntentRawRef = useRef<string>('');
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  const [playgroundInput, setPlaygroundInput] = useState('');
+  const [playgroundResult, setPlaygroundResult] = useState('');
+  const [playgroundLoading, setPlaygroundLoading] = useState(false);
 
   useEffect(() => {
     const initStorage = async () => {
@@ -72,8 +77,17 @@ export default function App() {
       setHistory(loadedHistory);
       setMemory(loadedMemory);
       
+      const autosavedIntentRaw = localStorage.getItem('architect_intent_raw_autosave');
+      
       if (workspace) {
-        if (workspace.intent) setIntent(workspace.intent);
+        if (workspace.intent) {
+          setIntent({
+            ...workspace.intent,
+            raw: autosavedIntentRaw !== null ? autosavedIntentRaw : (workspace.intent.raw || '')
+          });
+        } else if (autosavedIntentRaw !== null) {
+          setIntent(prev => ({ ...prev, raw: autosavedIntentRaw }));
+        }
         if (workspace.audit) setAudit(workspace.audit);
         if (workspace.stress) setStress(workspace.stress);
         if (workspace.instructionSet) setInstructionSet(workspace.instructionSet);
@@ -83,12 +97,41 @@ export default function App() {
         if (workspace.roiAnalytics) setRoiAnalytics(workspace.roiAnalytics);
         if (workspace.activeTab) setActiveTab(workspace.activeTab);
         if (workspace.isManualOpen !== undefined) setIsManualOpen(workspace.isManualOpen);
+      } else if (autosavedIntentRaw !== null) {
+        setIntent(prev => ({ ...prev, raw: autosavedIntentRaw }));
+      }
+      
+      if (autosavedIntentRaw !== null) {
+        currentIntentRawRef.current = autosavedIntentRaw;
+        const now = new Date();
+        setLastSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
       }
       
       setIsLoaded(true);
     };
     initStorage();
   }, []);
+
+  // Update intent ref whenever text changes
+  useEffect(() => {
+    currentIntentRawRef.current = intent.raw;
+  }, [intent.raw]);
+
+  // autosave 'User Intent' raw text to localStorage every 5 seconds to prevent loss during browser refreshes
+  useEffect(() => {
+    if (!isLoaded) return;
+    
+    const interval = setInterval(() => {
+      const textToSave = currentIntentRawRef.current || '';
+      localStorage.setItem('architect_intent_raw_autosave', textToSave);
+      
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setLastSavedTime(timeStr);
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [isLoaded]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -122,15 +165,6 @@ export default function App() {
         abortControllerRef.current.abort();
       }
     };
-  }, []);
-
-  // ?mode=odessa — force OC splash + presets open for portfolio/hiring demos
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('mode') === 'odessa') {
-      localStorage.removeItem('oc_splash_dismissed');
-      setShowOCSplash(true);
-    }
   }, []);
 
   useEffect(() => {
@@ -169,20 +203,68 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [intent.raw, activeTab]);
 
-  const handleSelectFacultyPreset = (preset: FacultyPreset) => {
-    setIntent(prev => ({ ...prev, raw: preset.intent, targetModel: preset.targetModel as ModelType }));
-    setShowFacultyPresets(false);
+  const handleFilesSelected = async (fileList: FileList | null) => {
+    if (!fileList) return;
+    const { parseDocument } = await import('./utils/documentParser');
+    const newAttachments: any[] = [];
+    
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      try {
+        const parsed = await parseDocument(file);
+        newAttachments.push(parsed);
+      } catch (err: any) {
+        setError(`Failed to parse "${file.name}": ${err.message}`);
+      }
+    }
+    
+    if (newAttachments.length > 0) {
+      setIntent(prev => ({
+        ...prev,
+        attachments: [...(prev.attachments || []), ...newAttachments]
+      }));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    handleFilesSelected(e.dataTransfer.files);
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setIntent(prev => ({
+      ...prev,
+      attachments: (prev.attachments || []).filter(a => a.id !== id)
+    }));
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleFilesSelected(e.target.files);
   };
 
   const handleReset = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    setIntent(prev => ({ ...prev, raw: '' }));
+    setIntent(prev => ({ ...prev, raw: '', attachments: [] }));
+    currentIntentRawRef.current = '';
+    localStorage.removeItem('architect_intent_raw_autosave');
+    setLastSavedTime(null);
     setAudit(null);
     setStress(null);
     setInstructionSet(null);
     setPiiFindings([]);
+    setIgnorePii(false);
     setRetrospective(null);
     setError(null);
     setActiveTab('prompt');
@@ -191,6 +273,48 @@ export default function App() {
     setConstitutionalMapping(null);
     
     storage.saveWorkspace(null);
+  };
+
+  const handleHardReset = async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIntent({
+      raw: '',
+      targetModel: ModelType.GEMINI_1_5_PRO,
+      useLCI: true,
+      lciConfig: {
+        contextWindow: 128000,
+        compressionRatio: 4
+      },
+      highRisk: true,
+      theme: ThemeType.DARK,
+      attachments: []
+    });
+    currentIntentRawRef.current = '';
+    localStorage.removeItem('architect_intent_raw_autosave');
+    setLastSavedTime(null);
+    setAudit(null);
+    setStress(null);
+    setInstructionSet(null);
+    setPiiFindings([]);
+    setIgnorePii(false);
+    setRetrospective(null);
+    setError(null);
+    setActiveTab('prompt');
+    setRedTeamResults(null);
+    setCrossModelParity(null);
+    setConstitutionalMapping(null);
+    setMemory([]);
+    setHistory([]);
+    setExpandedMemoryKeys({});
+    setFailedStep('');
+    setShowHardResetConfirm(false);
+    
+    // Completely clear all physical database buffers
+    await storage.saveWorkspace(null);
+    await storage.saveMemory([]);
+    await storage.saveHistory([]);
   };
 
   const handleRedactPII = () => {
@@ -206,9 +330,44 @@ export default function App() {
 
     setIntent(prev => ({ ...prev, raw: redactedText }));
     setPiiFindings([]);
+    setIgnorePii(false);
     if (error && error.includes('Potential PII detected')) {
       setError(null);
     }
+  };
+
+  const handleRejectPII = () => {
+    setIgnorePii(true);
+    setPiiFindings([]);
+    if (error && error.includes('Potential PII detected')) {
+      setError(null);
+    }
+  };
+
+  const handleClearMemory = async () => {
+    setMemory([]);
+    setExpandedMemoryKeys({});
+    await storage.saveMemory([]);
+  };
+
+  const handleRemoveMemoryItem = async (key: string) => {
+    setMemory(prev => {
+      const updated = prev.filter(m => m.key !== key);
+      storage.saveMemory(updated);
+      return updated;
+    });
+    setExpandedMemoryKeys(prev => {
+      const updated = { ...prev };
+      delete updated[key];
+      return updated;
+    });
+  };
+
+  const toggleMemoryExpansion = (key: string) => {
+    setExpandedMemoryKeys(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
   };
 
   const handleGenerate = async () => {
@@ -222,9 +381,10 @@ export default function App() {
     
     // Essential: PII Scanning
     const findings = scanForPII(intent.raw);
-    if (findings.length > 0) {
+    if (findings.length > 0 && !ignorePii) {
       setPiiFindings(findings);
-      setError(`Security Alert: Potential PII detected (${findings.map(f => f.type).join(', ')}). Please redact before proceeding.`);
+      setError(`Security Alert: Potential PII detected (${findings.map(f => f.type).join(', ')}). Please redact or explicitly reject alerts before proceeding.`);
+      setLoading(false);
       return;
     }
 
@@ -378,6 +538,22 @@ export default function App() {
   const handleBoxCopy = (data: any) => {
     const content = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
     navigator.clipboard.writeText(content);
+  };
+
+  const handlePlaygroundSubmit = async () => {
+    if (!instructionSet?.finalPrompt || !playgroundInput.trim()) return;
+    
+    setPlaygroundLoading(true);
+    setPlaygroundResult('');
+    
+    try {
+      const result = await testPlaygroundPrompt(instructionSet.finalPrompt, playgroundInput);
+      setPlaygroundResult(result);
+    } catch (err: any) {
+      setPlaygroundResult(`[ERROR] Execution failed:\n${err.message || String(err)}`);
+    } finally {
+      setPlaygroundLoading(false);
+    }
   };
 
   const handleCopyFullStack = () => {
@@ -648,21 +824,59 @@ ${instructionSet.finalPrompt}
                 <Terminal size={16} />
                 <h2 className="text-xs font-bold uppercase tracking-wider">Environmental Scan</h2>
               </div>
-              <Tooltip text="Clear all current inputs, audits, and generated instruction sets.">
-                <button 
-                  onClick={handleReset}
-                  className="text-[10px] text-[#888] hover:text-[#ff0000] transition-colors uppercase tracking-widest flex items-center gap-2 font-bold"
-                  aria-label="Reset Session"
-                >
-                  <RefreshCw size={12} /> RESET
-                </button>
-              </Tooltip>
+              <div className="flex items-center gap-4">
+                <Tooltip text="Clear click items & generated output results in current session context.">
+                  <button 
+                    onClick={handleReset}
+                    className="text-[10px] text-[#888] hover:text-[#00ff00] transition-colors uppercase tracking-widest flex items-center gap-1 font-bold"
+                    aria-label="Clear Session Inputs"
+                  >
+                    <RefreshCw size={11} className="transition-all" /> Clear Inputs
+                  </button>
+                </Tooltip>
+                
+                <div className="relative flex items-center">
+                  {!showHardResetConfirm ? (
+                    <button 
+                      onClick={() => setShowHardResetConfirm(true)}
+                      className="text-[10px] text-[#666] hover:text-red-500 hover:border-red-500/20 transition-colors uppercase tracking-widest flex items-center gap-1 font-bold px-2 py-0.5 border border-[#1a1a1a] rounded bg-red-950/10 cursor-pointer"
+                      title="Nuclear reset: Completely wipe memory, history, and workspace indices"
+                    >
+                      <Trash2 size={10} className="text-red-500/60" /> Hard Reset
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5 bg-[#250a0c] border border-red-500/30 px-2 py-1 rounded-sm animate-pulse">
+                      <span className="text-[8px] text-[#ff4444] font-bold uppercase tracking-widest font-mono">PURGE EVERYTHING?</span>
+                      <button 
+                        onClick={handleHardReset}
+                        className="text-[8px] bg-red-700 hover:bg-red-600 text-white px-2 py-0.5 rounded font-black uppercase cursor-pointer"
+                      >
+                        YES_PURGE
+                      </button>
+                      <button 
+                        onClick={() => setShowHardResetConfirm(false)}
+                        className="text-[8px] bg-[#1a1a1a] hover:bg-[#333] text-zinc-400 px-2 py-0.5 rounded font-black uppercase cursor-pointer"
+                      >
+                        CANCEL
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             
             <div className="space-y-4">
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="text-[11px] text-[#aaa] uppercase font-bold tracking-wider block">User Intent / Idea</label>
+                  <div className="flex items-center gap-2">
+                    <label className="text-[11px] text-[#aaa] uppercase font-bold tracking-wider block">User Intent / Idea</label>
+                    {lastSavedTime && (
+                      <span className="text-[8px] font-mono bg-[#00ff00]/10 border border-[#00ff00]/25 text-[#00ff00] px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1 zoom-in-100 animate-fade-in">
+                        <span className="w-1 h-1 rounded-full bg-[#00ff00] inline-block animate-pulse"></span>
+                        SAVED {lastSavedTime}
+                      </span>
+                    )}
+                  </div>
                   <button 
                     onClick={() => {
                       // Logic to trigger expert advice on current intent
@@ -673,23 +887,92 @@ ${instructionSet.finalPrompt}
                   >
                     <Sparkles size={10} /> Expert_Advice
                   </button>
-                  <button
-                    onClick={() => setShowFacultyPresets(true)}
-                    className="text-[10px] text-[#c6a679] uppercase font-bold flex items-center gap-1 hover:text-[#d4b88a] transition-colors"
-                    aria-label="Browse OC Faculty Templates"
-                  >
-                    <Sparkles size={10} /> OC_Faculty_Templates
-                  </button>
                 </div>
                 <Tooltip className="w-full" text="Enter your raw AI intent or prompt idea here. Be as descriptive as possible.">
                   <textarea 
                     value={intent.raw}
-                    onChange={(e) => setIntent(prev => ({ ...prev, raw: e.target.value }))}
+                    onChange={(e) => {
+                      setIntent(prev => ({ ...prev, raw: e.target.value }));
+                      setIgnorePii(false);
+                    }}
                     placeholder="Describe what you want the AI to do..."
                     className="w-full h-[500px] min-h-[400px] bg-[#050505] border border-[#1a1a1a] p-8 text-xl leading-relaxed focus:border-[#00ff00] outline-none transition-colors border-2 resize-y custom-scrollbar"
                     aria-label="AI Intent Input"
                   />
                 </Tooltip>
+
+                {/* Document Workspace Area */}
+                <div className="mt-4 bg-[#050505] border border-[#1a1a1a] p-4 rounded-sm flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText size={14} className="text-[#00ff00]" />
+                      <span className="text-[10px] text-[#aaa] uppercase font-bold tracking-wider">Document Workspace ({intent.attachments?.length || 0})</span>
+                    </div>
+                    <label className="text-[10px] text-[#00ff00] hover:text-[#00cc00] transition-colors cursor-pointer uppercase font-bold flex items-center gap-1">
+                      <Download size={10} className="rotate-180" /> Upload_Doc
+                      <input 
+                        type="file"
+                        multiple
+                        accept=".txt,.md,.json,.csv,.tsv,.xml,.yaml,.yml,.js,.ts,.tsx,.jsx,.docx,.pdf"
+                        className="hidden"
+                        onChange={handleFileChange}
+                      />
+                    </label>
+                  </div>
+                  
+                  {intent.attachments && intent.attachments.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[140px] overflow-y-auto custom-scrollbar pr-1">
+                      {intent.attachments.map(doc => {
+                        const fileExt = doc.name.split('.').pop()?.toUpperCase() || 'FILE';
+                        const isPdf = doc.type === 'application/pdf';
+                        
+                        return (
+                          <div key={doc.id} className="flex items-center justify-between p-2 bg-[#0a0a0a] border border-[#1a1a1a] hover:border-[#333] transition-colors rounded-sm group">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <div className={`text-[8px] font-black px-1.5 py-0.5 rounded-xs border flex-shrink-0 ${
+                                isPdf ? 'bg-[#ff0055]/10 border-[#ff0055] text-[#ff0055]' : 'bg-[#00ff00]/10 border-[#00ff00] text-[#00ff00]'
+                              }`}>
+                                {fileExt}
+                              </div>
+                              <span className="text-[11px] text-[#ccc] truncate font-mono" title={doc.name}>{doc.name}</span>
+                              <span className="text-[9px] text-[#555] font-mono flex-shrink-0">({(doc.size / 1024).toFixed(1)} KB)</span>
+                            </div>
+                            <button 
+                              onClick={() => handleRemoveAttachment(doc.id)}
+                              className="text-[#555] hover:text-[#ff0000] p-1 transition-colors flex-shrink-0"
+                              title="Remove document"
+                            >
+                              <RefreshCw size={10} className="rotate-45" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div 
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      className={`border border-dashed p-4 text-center cursor-pointer transition-all ${
+                        isDragging 
+                          ? 'bg-[#00ff00]/5 border-[#00ff00] text-[#00ff00]' 
+                          : 'bg-[#0a0a0a] border-[#1a1a1a] text-[#555] hover:border-[#222] hover:text-[#888]'
+                      }`}
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.multiple = true;
+                        input.accept = '.txt,.md,.json,.csv,.tsv,.xml,.yaml,.yml,.js,.ts,.tsx,.jsx,.docx,.pdf';
+                        input.onchange = (e: any) => handleFilesSelected(e.target.files);
+                        input.click();
+                      }}
+                    >
+                      <p className="text-[10px] uppercase font-bold tracking-widest">Drag & Drop Documents Here or Click to Browse</p>
+                      <p className="text-[8px] text-[#444] mt-1">Natively supports PDF, DOCX, TXT, MD, CSV, JSON, and source scripts</p>
+                    </div>
+                  )}
+                </div>
+
                 <AnimatePresence>
                   {piiFindings.length > 0 && (
                     <motion.div 
@@ -702,14 +985,24 @@ ${instructionSet.finalPrompt}
                         <ShieldAlert size={14} />
                         <span className="text-xs font-bold uppercase">PII DETECTED ({piiFindings.length})</span>
                       </div>
-                      <Tooltip text="Automatically redact detected PII (emails, phones, etc.) from your intent text.">
-                        <button
-                          onClick={handleRedactPII}
-                          className="text-[10px] bg-[#ff0000] text-white px-3 py-1.5 hover:bg-[#cc0000] transition-colors uppercase font-bold rounded-sm"
-                        >
-                          Redact All
-                        </button>
-                      </Tooltip>
+                      <div className="flex items-center gap-2">
+                        <Tooltip text="Reject alerts and proceed with original text. Use if scanner is reporting false positives.">
+                          <button
+                            onClick={handleRejectPII}
+                            className="text-[10px] border border-[#ff0000] text-[#ff0000] px-3 py-1.5 hover:bg-[#ff0000] hover:text-white transition-colors uppercase font-bold rounded-sm mr-2"
+                          >
+                            Reject Alerts
+                          </button>
+                        </Tooltip>
+                        <Tooltip text="Automatically redact detected PII (emails, phones, etc.) from your intent text.">
+                          <button
+                            onClick={handleRedactPII}
+                            className="text-[10px] bg-[#ff0000] text-white px-3 py-1.5 hover:bg-[#cc0000] transition-colors uppercase font-bold rounded-sm"
+                          >
+                            Redact All
+                          </button>
+                        </Tooltip>
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -725,32 +1018,74 @@ ${instructionSet.finalPrompt}
                   </div>
                   
                   <div className="flex flex-wrap gap-1 mb-2">
-                    {['Fast', 'Deep', 'Audit', 'Compare', 'Export'].map(profile => (
-                      <button
-                        key={profile}
-                        onClick={() => {
-                          const modelMap: Record<string, ModelType> = {
-                            'Fast': ModelType.GEMINI_2_0_FLASH,
-                            'Deep': ModelType.GEMINI_1_5_PRO,
-                            'Audit': ModelType.GPT_O1_PREVIEW,
-                            'Compare': ModelType.CLAUDE_3_7_SONNET,
-                            'Export': ModelType.GEMINI_1_5_PRO
-                          };
-                          setIntent(prev => ({ ...prev, targetModel: modelMap[profile] }));
-                        }}
-                        className={`px-3 py-1.5 text-[10px] font-bold uppercase transition-colors ${
-                          (intent.targetModel.includes(profile.toLowerCase()) || (profile === 'Fast' && intent.targetModel.includes('flash'))) 
-                            ? 'bg-[#00ff00] text-[#000]' 
-                            : 'bg-[#0f0f0f] border border-[#1a1a1a] text-[#888] hover:bg-[#1a1a1a]'
-                        }`}
-                      >
-                        {profile}
-                      </button>
-                    ))}
+                    {['Fast', 'Deep', 'Audit', 'Compare', 'Export'].map(profile => {
+                      const modelMap: Record<string, ModelType> = {
+                        'Fast': ModelType.GEMINI_2_0_FLASH,
+                        'Deep': ModelType.GEMINI_1_5_PRO,
+                        'Audit': ModelType.GPT_O1_PREVIEW,
+                        'Compare': ModelType.CLAUDE_3_7_SONNET,
+                        'Export': ModelType.DEEPSEEK_R1
+                      };
+                      const isSelected = 
+                        (profile === 'Fast' && (intent.targetModel === ModelType.GEMINI_2_0_FLASH || intent.targetModel === ModelType.GEMINI_1_5_FLASH)) ||
+                        (profile === 'Deep' && intent.targetModel === ModelType.GEMINI_1_5_PRO) ||
+                        (profile === 'Audit' && intent.targetModel === ModelType.GPT_O1_PREVIEW) ||
+                        (profile === 'Compare' && (intent.targetModel === ModelType.CLAUDE_3_7_SONNET || intent.targetModel === ModelType.CLAUDE_3_5_SONNET)) ||
+                        (profile === 'Export' && intent.targetModel === ModelType.DEEPSEEK_R1);
+
+                      return (
+                        <button
+                          key={profile}
+                          onClick={() => {
+                            setIntent(prev => ({ ...prev, targetModel: modelMap[profile] }));
+                          }}
+                          className={`px-3 py-1.5 text-[10px] font-bold uppercase transition-colors ${
+                            isSelected 
+                              ? 'bg-[#00ff00] text-[#000]' 
+                              : 'bg-[#0f0f0f] border border-[#1a1a1a] text-[#888] hover:bg-[#1a1a1a]'
+                          }`}
+                        >
+                          {profile}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <p className="text-[9px] text-[#444] mb-2">
-                     Routing: {intent.targetModel.includes('flash') ? 'Fast' : 'Deep'} Audit · Medium cost · Higher confidence
-                  </p>
+                  <div className="mt-2.5 p-3 bg-[#0d0d0d] border border-[#1a1a1a] rounded text-[11px] leading-relaxed text-[#eee]">
+                    <div className="flex items-center gap-1.5 mb-1.5 text-[#00ff00] font-mono uppercase text-[9px] tracking-wider font-bold">
+                      <span>● Active Profile Guide</span>
+                    </div>
+                    {intent.targetModel === ModelType.GEMINI_2_0_FLASH || intent.targetModel === ModelType.GEMINI_1_5_FLASH ? (
+                      <p>
+                        <span className="font-bold text-[#fff] font-mono text-[10px] bg-[#222] px-1 py-0.5 rounded-sm mr-1">RUN SPEED FAST</span>
+                        Optimized for immediate updates and high-speed feedback. Choose this for basic commands, initial drafts, or fast testing cycles where response speed is your top priority.
+                      </p>
+                    ) : intent.targetModel === ModelType.GEMINI_1_5_PRO ? (
+                      <p>
+                        <span className="font-bold text-[#fff] font-mono text-[10px] bg-[#222] px-1 py-0.5 rounded-sm mr-1">DEEP ANALYSIS MODE</span>
+                        The recommended default for complex tasks. It takes time to carefully evaluate your instructions, trace connections in files, and solve multi-step problems with production-grade correctness.
+                      </p>
+                    ) : intent.targetModel === ModelType.GPT_O1_PREVIEW ? (
+                      <p>
+                        <span className="font-bold text-[#fff] font-mono text-[10px] bg-[#222] px-1 py-0.5 rounded-sm mr-1">RUGGED AUDITING</span>
+                        A highly cautious audit process. It works like a rigorous secondary review, scanning code line-by-line to prevent bugs, verify safety limits, and validate rules before going live.
+                      </p>
+                    ) : intent.targetModel === ModelType.CLAUDE_3_7_SONNET || intent.targetModel === ModelType.CLAUDE_3_5_SONNET ? (
+                      <p>
+                        <span className="font-bold text-[#fff] font-mono text-[10px] bg-[#222] px-1 py-0.5 rounded-sm mr-1">PARAGON COMPARER</span>
+                        Expert-level design focus. Ideal for comparing alternative patterns, generating clean, elegant code syntax, and polishing layouts with perfect modular split designs.
+                      </p>
+                    ) : intent.targetModel === ModelType.DEEPSEEK_R1 ? (
+                      <p>
+                        <span className="font-bold text-[#fff] font-mono text-[10px] bg-[#222] px-1 py-0.5 rounded-sm mr-1">STRUCTURED EXPORT</span>
+                        Tailored formatting mode. Focuses specifically on outputting incredibly organized configurations, clean JSON blocks, and flawless deployment assets.
+                      </p>
+                    ) : (
+                      <p>
+                        <span className="font-bold text-[#fff] font-mono text-[10px] bg-[#222] px-1 py-0.5 rounded-sm mr-1">CUSTOM FLOW</span>
+                        Specialized execution routing configured specifically for your current workspace setup.
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-6 p-5 bg-[#050505] border border-[#1a1a1a]">
@@ -786,7 +1121,7 @@ ${instructionSet.finalPrompt}
                             <span className="text-[10px] text-[#00ff00] font-mono">{intent.lciConfig.contextWindow.toLocaleString()} TKNS</span>
                           </div>
                           <div className="flex gap-1">
-                            {[128000, 512000, 1000000].map(val => (
+                            {[128000, 256000, 512000, 1000000].map(val => (
                               <button
                                 key={val}
                                 onClick={() => setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, contextWindow: val } }))}
@@ -801,12 +1136,12 @@ ${instructionSet.finalPrompt}
                             ))}
                             <button
                               onClick={() => {
-                                if ([128000, 512000, 1000000].includes(intent.lciConfig.contextWindow)) {
+                                if ([128000, 256000, 512000, 1000000].includes(intent.lciConfig.contextWindow)) {
                                   setIntent(prev => ({ ...prev, lciConfig: { ...prev.lciConfig, contextWindow: prev.lciConfig.contextWindow + 1 } }));
                                 }
                               }}
                               className={`flex-1 py-1.5 text-[9px] font-bold uppercase border transition-all ${
-                                ![128000, 512000, 1000000].includes(intent.lciConfig.contextWindow)
+                                ![128000, 256000, 512000, 1000000].includes(intent.lciConfig.contextWindow)
                                   ? 'bg-[#00ff00]/10 border-[#00ff00] text-[#00ff00]'
                                   : 'bg-[#0a0a0a] border-[#1a1a1a] text-[#555] hover:text-[#888]'
                               }`}
@@ -936,23 +1271,86 @@ ${instructionSet.finalPrompt}
           </section>
 
           <section className="bg-[#0f0f0f] border border-[#1a1a1a] p-4 rounded-sm">
-            <div className="flex items-center gap-2 text-[#0088ff] mb-4">
-              <BookOpen size={16} />
-              <h2 className="text-xs font-bold uppercase tracking-wider">OpenMemory.md</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 text-[#0088ff]">
+                <BookOpen size={16} />
+                <h2 className="text-xs font-bold uppercase tracking-wider">OpenMemory.md ({memory.length})</h2>
+              </div>
+              {memory.length > 0 && (
+                <button
+                  onClick={handleClearMemory}
+                  className="text-[9px] text-[#ff0055] border border-[#ff0055]/30 hover:border-[#ff0055] hover:bg-[#ff0055]/10 px-2 py-1 uppercase font-bold transition-all flex items-center gap-1 rounded-sm"
+                  title="Wipe memory buffer entirely"
+                >
+                  <Trash2 size={10} /> Clear_All
+                </button>
+              )}
             </div>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+            
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
               {memory.length === 0 ? (
                 <p className="text-[10px] text-[#444] italic">Memory buffer empty...</p>
               ) : (
-                memory.map((m, i) => (
-                  <div key={i} className="bg-[#050505] border border-[#1a1a1a] p-2 rounded-sm">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[9px] text-[#0088ff] font-bold">{m.key.toUpperCase()}</span>
-                      <span className="text-[8px] text-[#444]">{m.lastUpdated.split('T')[1].split('.')[0]}</span>
+                memory.map((m, i) => {
+                  const isExpanded = !!expandedMemoryKeys[m.key];
+                  return (
+                    <div 
+                      key={m.key || i} 
+                      className={`bg-[#050505] border transition-all rounded-sm duration-150 ${
+                        isExpanded ? 'border-[#0088ff]/50 shadow-[0_0_8px_rgba(0,136,255,0.1)]' : 'border-[#1a1a1a] hover:border-[#333]'
+                      }`}
+                    >
+                      {/* Accordion Header */}
+                      <div 
+                        onClick={() => toggleMemoryExpansion(m.key)}
+                        className="flex justify-between items-center p-2.5 cursor-pointer select-none"
+                      >
+                        <div className="flex flex-col gap-0.5 overflow-hidden pr-2">
+                          <span className="text-[9px] text-[#0088ff] font-bold tracking-tight font-mono">{m.key.toUpperCase()}</span>
+                          <span className="text-[8px] text-[#555] font-mono">
+                            {new Date(m.lastUpdated).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                          <span className="text-[8px] text-[#666] uppercase bg-[#111] px-1 rounded-xs border border-[#222]">
+                            {isExpanded ? 'Collapse' : 'Expand'}
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveMemoryItem(m.key);
+                            }}
+                            className="text-[#666] hover:text-[#ff0055] p-1 transition-colors rounded hover:bg-[#ff0055]/10"
+                            title="Purge this key from memory"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* Accordion Body */}
+                      {isExpanded && (
+                        <div className="px-3 pb-3 pt-1 border-t border-[#111] font-mono text-[10px] text-[#aaa] leading-relaxed break-words bg-[#080808]/50 selection:bg-[#0088ff]/20">
+                          <div className="flex justify-between items-center mb-2 bg-[#111] p-1.5 rounded-xs border border-[#1a1a1a]">
+                            <span className="text-[8px] text-[#555] uppercase font-bold">Raw Value</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(m.value);
+                              }}
+                              className="text-[8px] text-[#0088ff] hover:underline uppercase"
+                            >
+                              Copy Prompt
+                            </button>
+                          </div>
+                          <div className="whitespace-pre-wrap max-h-40 overflow-y-auto custom-scrollbar pr-1 text-[#bbb]">
+                            {m.value}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-[10px] text-[#888] truncate">{m.value}</p>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </section>
@@ -1305,6 +1703,70 @@ ${instructionSet.finalPrompt}
                             {instructionSet.finalPrompt}
                           </pre>
                         </div>
+                        
+                        {/* Inline Playground */}
+                        <div className="pt-6 border-t border-[#1a1a1a]">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Cpu size={14} className="text-[#00ff00]" />
+                            <span className="text-[11px] text-[#00ff00] font-bold uppercase tracking-wider">Inline Playground</span>
+                            <span className="text-[9px] text-[#666] ml-2">Test your final prompt live</span>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div className="space-y-3">
+                              <label className="text-[9px] text-[#888] uppercase block">Test Input</label>
+                              <textarea
+                                value={playgroundInput}
+                                onChange={(e) => setPlaygroundInput(e.target.value)}
+                                placeholder="Enter a sample message to test the prompt against..."
+                                className="w-full bg-[#0a0a0a] border border-[#222] p-3 text-[11px] text-[#eee] font-mono h-32 focus:border-[#00ff00] transition-colors resize-none placeholder-[#444]"
+                              />
+                              <button
+                                onClick={handlePlaygroundSubmit}
+                                disabled={playgroundLoading || !playgroundInput.trim()}
+                                className="flex items-center justify-center gap-2 w-full bg-[#1a1a1a] hover:bg-[#222] border border-[#333] text-[#00ff00] py-2 text-[10px] font-bold uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {playgroundLoading ? (
+                                  <>
+                                    <RefreshCw size={12} className="animate-spin" />
+                                    Executing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Zap size={12} />
+                                    Run Selection
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                            
+                            <div className="space-y-3">
+                              <div className="flex justify-between items-center">
+                                <label className="text-[9px] text-[#888] uppercase block">Output Console</label>
+                                {playgroundResult && (
+                                  <button onClick={() => handleBoxCopy(playgroundResult)} className="text-[9px] text-[#666] hover:text-[#00ff00] flex items-center gap-1 transition-colors">
+                                    <Copy size={10} /> COPY RESULT
+                                  </button>
+                                )}
+                              </div>
+                              <div className="w-full bg-[#050505] border border-[#1a1a1a] p-3 text-[11px] text-[#ccc] font-mono h-[calc(100%-24px)] overflow-y-auto min-h-32">
+                                {playgroundLoading ? (
+                                  <div className="flex flex-col items-center justify-center h-full text-[#444] gap-2">
+                                    <div className="w-4 h-4 rounded-full border-2 border-[#444] border-t-[#00ff00] animate-spin" />
+                                    <span className="text-[9px] uppercase tracking-wider">Awaiting LLM Response...</span>
+                                  </div>
+                                ) : playgroundResult ? (
+                                  <div className="whitespace-pre-wrap">{playgroundResult}</div>
+                                ) : (
+                                  <div className="flex items-center justify-center h-full text-[#333] text-[9px] uppercase">
+                                    Awaiting input execution...
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
                       </motion.div>
                     )}
 
@@ -1906,8 +2368,6 @@ ${instructionSet.finalPrompt}
         }
       `}</style>
       </div>
-      <OCSplashScreen onDismiss={() => setShowOCSplash(false)} onOpenPresets={() => setShowFacultyPresets(true)} />
-      <FacultyPresets isVisible={showFacultyPresets} onClose={() => setShowFacultyPresets(false)} onSelectPreset={handleSelectFacultyPreset} />
     </ErrorBoundary>
   );
 }

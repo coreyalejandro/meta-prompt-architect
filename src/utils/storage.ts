@@ -90,6 +90,24 @@ export const storage = {
     }
   },
 
+  async getCustomTemplates(): Promise<any[]> {
+    try {
+      const data = await get<any[]>('architect_custom_templates');
+      return data || [];
+    } catch (e) {
+      console.error('Failed to get custom templates from IndexedDB', e);
+      return [];
+    }
+  },
+
+  async saveCustomTemplates(templates: any[]): Promise<void> {
+    try {
+      await set('architect_custom_templates', templates);
+    } catch (e) {
+      console.error('Failed to save custom templates to IndexedDB', e);
+    }
+  },
+
   // Migration from localStorage
   async migrateFromLocalStorage(): Promise<void> {
     try {

@@ -18,6 +18,16 @@ export enum ThemeType {
   HIGH_CONTRAST = "high-contrast"
 }
 
+export const AttachmentSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  size: z.number(),
+  type: z.string(),
+  content: z.string(),
+});
+
+export type Attachment = z.infer<typeof AttachmentSchema>;
+
 export const UserIntentSchema = z.object({
   raw: z.string(),
   targetModel: z.nativeEnum(ModelType),
@@ -29,6 +39,7 @@ export const UserIntentSchema = z.object({
   highRisk: z.boolean(),
   theme: z.nativeEnum(ThemeType),
   compliance: z.string().optional(),
+  attachments: z.array(AttachmentSchema).optional(),
 });
 
 export const AuditResultSchema = z.object({

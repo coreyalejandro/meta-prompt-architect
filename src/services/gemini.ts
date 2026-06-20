@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { UserIntent, AuditResult, StressTestResult, InstructionSet, ModelType, Retrospective, PIIFinding, MemoryState, AuditResultSchema, StressTestResultSchema, InstructionSetSchema } from "../types";
+import { UserIntent, AuditResult, StressTestResult, InstructionSet, ModelType, Retrospective, PIIFinding, MemoryState, AuditResultSchema, StressTestResultSchema, InstructionSetSchema, Attachment } from "../types";
 import { z } from 'zod';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -38,6 +38,30 @@ export function scanForPII(text: string): PIIFinding[] {
   return findings;
 }
 
+// Essential: Attachment Preprocessor and Payload Compiler
+export function buildContentPayload(basePrompt: string, attachments?: Attachment[]) {
+  if (!attachments || attachments.length === 0) {
+    return basePrompt;
+  }
+
+  const parts: any[] = [{ text: basePrompt }];
+
+  attachments.forEach(file => {
+    if (file.type === 'application/pdf') {
+      parts.push({
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: file.content
+        }
+      });
+    } else {
+      parts[0].text += `\n\n=== ATTACHED WORKSPACE CONTEXT [Name: ${file.name}] ===\n${file.content}\n==============================================`;
+    }
+  });
+
+  return parts;
+}
+
 const GENERATION_MODEL = "gemini-3-flash-preview";
 
 // Essential: Model-Specific Reasoning Adapters
@@ -64,8 +88,8 @@ export async function auditIntent(intent: UserIntent, signal?: AbortSignal): Pro
   return withRetry(async () => {
     const response = await ai.models.generateContent({
       model: GENERATION_MODEL,
-      contents: `Analyze this user intent for a prompt: "${intent.raw}". 
-      Identify implicit assumptions, 3 critical edge cases, and the "Truth Surface" (required external data).`,
+      contents: buildContentPayload(`Analyze this user intent for a prompt: "${intent.raw}". 
+      Identify implicit assumptions, 3 critical edge cases, and the "Truth Surface" (required external data).`, intent.attachments),
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -96,8 +120,8 @@ export async function stressTest(intent: UserIntent, audit: AuditResult, signal?
   return withRetry(async () => {
     const response = await ai.models.generateContent({
       model: GENERATION_MODEL,
-      contents: `Stress-test this intent: "${intent.raw}" based on these audit findings: ${JSON.stringify(audit)}.
-      Provide a Critic's argument, Logic optimization, and a Resolution into a hardened instruction set.`,
+      contents: buildContentPayload(`Stress-test this intent: "${intent.raw}" based on these audit findings: ${JSON.stringify(audit)}.
+      Provide a Critic's argument, Logic optimization, and a Resolution into a hardened instruction set.`, intent.attachments),
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -124,6 +148,32 @@ export async function stressTest(intent: UserIntent, audit: AuditResult, signal?
   });
 }
 
+// Relevance Filtering: Only include memory items that have keyword overlap or are relevant to the current intent
+export function filterMemoryByRelevance(intentText: string, memory: MemoryState[]): MemoryState[] {
+  if (!intentText || intentText.trim() === '') return [];
+  
+  // Normalize and tokenize current intent to extract meaningful terms
+  const currentWords = intentText
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => word.length > 3 && !['generate', 'prompt', 'create', 'build', 'write', 'implement', 'design', 'with', 'that', 'this', 'some', 'from', 'using', 'optimized', 'architecture', 'integration', 'should', 'have', 'workflow', 'builder', 'expert', 'system', 'concept'].includes(word));
+
+  if (currentWords.length === 0) {
+    // If the intent has only short/common words, return a small subset of the most recent memory to prevent complete loss of context
+    return memory.slice(-2);
+  }
+
+  return memory.filter(item => {
+    const valText = item.value.toLowerCase();
+    const keyText = item.key.toLowerCase();
+    
+    // Check if any significant keyword is present in the memory key or value
+    const hasKeywordOverlap = currentWords.some(word => valText.includes(word) || keyText.includes(word));
+    return hasKeywordOverlap;
+  });
+}
+
 export async function generateInstructionSet(
   intent: UserIntent, 
   stress: StressTestResult, 
@@ -131,8 +181,12 @@ export async function generateInstructionSet(
   signal?: AbortSignal
 ): Promise<InstructionSet> {
   const modelStrengths = getModelStrengths(intent.targetModel);
+  
+  // Relevance check to isolate context and prevent unrelated project contamination (e.g. madmall)
+  const filteredMemory = filterMemoryByRelevance(intent.raw, memory);
+  
   // Optimization: Dynamic LCI Memory Compression
-  let relevantMemory = memory;
+  let relevantMemory = filteredMemory;
   if (intent.useLCI) {
     const budgetFactor = 1 / intent.lciConfig.compressionRatio;
     const charBudget = Math.floor(intent.lciConfig.contextWindow * 4 * 0.15 * budgetFactor); // Approx 15% of window available for memory, scaled by compression
@@ -167,11 +221,7 @@ export async function generateInstructionSet(
   
   const memoryContext = relevantMemory.length > 0 ? `\nRecent Context (LCI-Optimized): ${JSON.stringify(relevantMemory)}` : "";
 
-  try {
-    return await withRetry(async () => {
-      const response = await ai.models.generateContent({
-        model: GENERATION_MODEL,
-        contents: `Generate a high-dimensional Instruction Set for intent: "${intent.raw}" using resolution: "${stress.resolution}".
+  const promptText = `Generate a high-dimensional Instruction Set for intent: "${intent.raw}" using resolution: "${stress.resolution}".
         Target Model: ${intent.targetModel}. 
         Model-Specific Optimization: ${modelStrengths}
         Use LCI (Linear Context Injection) Protocol: ${intent.useLCI}. 
@@ -192,7 +242,13 @@ export async function generateInstructionSet(
         Generate a 'buildContract' that includes:
         1. Invariants: A set of strict logical constraints extracted from the intent (e.g., "Output must be valid JSON", "No mentions of PII"). Each invariant must have a 'verified' status.
         2. Intent Drift: A calculation (0-100) of how much the final prompt has evolved from the original intent. 0 means identical, 100 means complete departure.
-        3. Red-Team Report: An internal adversarial assessment (threat level and specific findings).`,
+        3. Red-Team Report: An internal adversarial assessment (threat level and specific findings).`;
+
+  try {
+    return await withRetry(async () => {
+      const response = await ai.models.generateContent({
+        model: GENERATION_MODEL,
+        contents: buildContentPayload(promptText, intent.attachments),
         config: {
           temperature: 0.7,
           responseMimeType: "application/json",
@@ -451,5 +507,19 @@ export async function mapConstitutionalStandards(instructionSet: InstructionSet,
     });
     if (signal?.aborted) throw new Error('AbortError');
     return JSON.parse(cleanJsonResponse(response.text));
+  });
+}
+
+export async function testPlaygroundPrompt(systemPrompt: string, userMessage: string, signal?: AbortSignal): Promise<string> {
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: GENERATION_MODEL,
+      contents: userMessage,
+      config: {
+        systemInstruction: systemPrompt
+      }
+    });
+    if (signal?.aborted) throw new Error('AbortError');
+    return response.text() || '';
   });
 }
