@@ -89,7 +89,8 @@ export async function auditIntent(intent: UserIntent, signal?: AbortSignal): Pro
     const response = await ai.models.generateContent({
       model: GENERATION_MODEL,
       contents: buildContentPayload(`Analyze this user intent for a prompt: "${intent.raw}". 
-      Identify implicit assumptions, 3 critical edge cases, and the "Truth Surface" (required external data).`, intent.attachments),
+      Identify implicit assumptions, 3 critical edge cases, and the "Truth Surface" (required external data).
+      CRITICAL: You MUST explicitly list any required dynamic inputs (text, documents, code, etc.) that the prompt mentions, so we can later create variable placeholders (e.g. {{input}}) for them in the Truth Surface or assumptions.`, intent.attachments),
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -121,7 +122,9 @@ export async function stressTest(intent: UserIntent, audit: AuditResult, signal?
     const response = await ai.models.generateContent({
       model: GENERATION_MODEL,
       contents: buildContentPayload(`Stress-test this intent: "${intent.raw}" based on these audit findings: ${JSON.stringify(audit)}.
-      Provide a Critic's argument, Logic optimization, and a Resolution into a hardened instruction set.`, intent.attachments),
+      Provide a Critic's argument, Logic optimization, and a Resolution into a hardened instruction set.
+      CRITICAL DESIGN ENFORCEMENT: The Logic Optimization MUST explicitly apply "Backward's Design" principles. You must define the exact end-state and output structure first, and then build the logic backwards.
+      CRITICAL VARIABLE ENFORCEMENT: The logic must enforce that ALL dynamic inputs identified in the audit will be parameterized using explicit variable placeholders (like {{variable_name}}).`, intent.attachments),
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -238,9 +241,22 @@ export async function generateInstructionSet(
         
         CRITICAL: The 'finalPrompt' MUST NOT use terms like 'BOOTSTRAP_COMMAND' or 'USAGE_INSTRUCTIONS' or ask the AI to relay instructions to another session, as these trigger prompt injection filters in modern LLMs. Instead, provide a clear, natural-language 'Context & Goal' section and standard 'Instructions' formatted safely for direct execution.
         
+        CRITICAL DESIGN REQUIREMENT (BACKWARD'S DESIGN):
+        The generated system prompt ('finalPrompt') MUST be explicitly derived using "Backward's Design" principles. You must first define the desired end-state, desired output formats, and success criteria of the user's intent. Then, construct the instructions backwards step-by-step to ensure the model naturally arrives at that desired outcome without deviating. 
+        
+        CRITICAL VARIABLE PLACEHOLDERS REQUIREMENT:
+        The generated system prompt ('finalPrompt') MUST explicitly integrate dynamic variable placeholders for ANY input (text, image, document, plan, review, etc.) being discussed or mentioned in the user's intent. The user must be able to inject runtime context inputs. You MUST include exact syntax patterns embedded naturally in the instruction structures, such as {{input_name}} or \${input_name}. 
+        For example: 
+        - If the user intent mentions a plan, include {{plan}} or \${plan}.
+        - If it mentions an image, include {{image}} or \${image}.
+        - If it mentions a reference document, include {{attached_document}} or \${attached_document}.
+        Ensure these placeholders are styled clearly (e.g. "Review the implementation plan provided in {{plan}} before proceeding...", "Analyze the attached image in {{image}}..."). Do NOT omit them; they must be physically written as empty placeholder tags to preserve downstream utility!
+        
         BUILD CONTRACT & FORMAL VERIFICATION:
         Generate a 'buildContract' that includes:
-        1. Invariants: A set of strict logical constraints extracted from the intent (e.g., "Output must be valid JSON", "No mentions of PII"). Each invariant must have a 'verified' status.
+        1. Invariants: A set of strict logical constraints extracted from the intent (e.g., "Output must be valid JSON", "No mentions of PII"). Each invariant must have a 'verified' status. You MUST include two specific invariants to guarantee the new hardening rules:
+           - An invariant asserting: "Prompt is explicitly derived via Backward's Design principles."
+           - An invariant asserting: "Variable placeholders (e.g. {{input}}) are present for ALL dynamic inputs mentioned."
         2. Intent Drift: A calculation (0-100) of how much the final prompt has evolved from the original intent. 0 means identical, 100 means complete departure.
         3. Red-Team Report: An internal adversarial assessment (threat level and specific findings).`;
 
@@ -409,6 +425,10 @@ export async function generateWorkflow(prompt: string, signal?: AbortSignal) {
       contents: `You are an expert AI workflow architect. Given the following user request, design a multi-step AI workflow.
       Each step should have a name, a detailed intent (prompt), a target model, and an array of names of the steps it depends on.
       
+      CRITICAL DESIGN RULES FOR EVERY STEP INTENT:
+      1. Apply Backward's Design: Define the step's end-state and output structure first, then describe the logic backwards.
+      2. Variable Parameterization: If a step takes inputs from previous steps or external data, you MUST include explicit variable placeholders (e.g. {{input_name}}) in the intent.
+      
       User Request: "${prompt}"
       
       Available Models: ${Object.values(ModelType).join(", ")}
@@ -477,12 +497,12 @@ export async function mapConstitutionalStandards(instructionSet: InstructionSet,
   return withRetry(async () => {
     const response = await ai.models.generateContent({
       model: GENERATION_MODEL,
-      contents: `You are a compliance and regulatory expert. Map the following instruction set to specific regulatory standards (e.g., GDPR, HIPAA, NIST, EU AI Act).
+      contents: `You are a compliance and regulatory expert. Map the following instruction set to specific C-RSP (Constitutionally-Regulated Single Pass) execution standards (e.g., GDPR, HIPAA, NIST, EU AI Act, C-RSP Core).
       
       Instruction Set:
       ${instructionSet.finalPrompt}
       
-      Identify which standards are addressed, the percentage of coverage (1-100), and list the specific clauses or directives in the prompt that map to that standard.`,
+      Identify which C-RSP standards are addressed, the percentage of coverage (1-100), and list the specific clauses or directives in the prompt that map to that standard.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -520,6 +540,6 @@ export async function testPlaygroundPrompt(systemPrompt: string, userMessage: st
       }
     });
     if (signal?.aborted) throw new Error('AbortError');
-    return response.text() || '';
+    return response.text || '';
   });
 }

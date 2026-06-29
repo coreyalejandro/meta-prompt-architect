@@ -132,7 +132,7 @@ export default function Manual({ isOpen, onClose }: ManualProps) {
               <div className="bg-[#050505] border border-[#1a1a1a] p-4 rounded-sm">
                 <div className="flex items-center gap-2 text-[#00ff00] mb-2">
                   <BarChart3 size={14} />
-                  <span className="text-[10px] font-bold uppercase">Constitutional Mapping</span>
+                  <span className="text-[10px] font-bold uppercase">C-RSP (Constitutionally-Regulated Single Pass) Validation</span>
                 </div>
                 <p className="text-[10px] text-[#666]">
                   Traces every Verification Gate back to specific regulatory or safety standards (e.g., EU AI Act, NIST).

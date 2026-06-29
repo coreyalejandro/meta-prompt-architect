@@ -1,1 +1,102 @@
 @import "tailwindcss";
+
+/* Neuro-divergent Focus Mode Overrides */
+.neuro-mode {
+  background-color: #fdfaf6 !important;
+  color: #2b2b2b !important;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 16px !important;
+  line-height: 1.6;
+}
+
+.neuro-mode * {
+  letter-spacing: normal !important;
+}
+
+.neuro-mode h1, .neuro-mode h2, .neuro-mode h3 {
+  text-transform: none !important;
+  font-weight: 700 !important;
+  font-size: 1.1em !important;
+  color: #111 !important;
+}
+
+.neuro-mode section, 
+.neuro-mode .bg-\[\#0f0f0f\], 
+.neuro-mode .bg-\[\#050505\],
+.neuro-mode .bg-\[\#020202\],
+.neuro-mode .bg-\[\#030303\],
+.neuro-mode .bg-\[\#070707\],
+.neuro-mode .bg-\[\#0a0a0a\],
+.neuro-mode .bg-\[\#111\] {
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02) !important;
+}
+
+.neuro-mode header {
+  background-color: #ffffff !important;
+  border-bottom: 2px solid #e2e8f0 !important;
+}
+
+.neuro-mode button {
+  border-radius: 8px !important;
+  text-transform: none !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+
+.neuro-mode button.bg-\[\#00ff00\] {
+  background-color: #4f46e5 !important;
+  color: white !important;
+}
+
+.neuro-mode button:not(.bg-\[\#00ff00\]) {
+  background-color: #f1f5f9 !important;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+.neuro-mode button:hover {
+  background-color: #e2e8f0 !important;
+}
+
+.neuro-mode input, .neuro-mode textarea, .neuro-mode select {
+  background-color: #f8fafc !important;
+  border: 2px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+}
+
+.neuro-mode input:focus, .neuro-mode textarea:focus {
+  border-color: #4f46e5 !important;
+  outline: none !important;
+}
+
+.neuro-mode .text-\[\#00ff00\], .neuro-mode .text-cyan-400, .neuro-mode .text-emerald-400 {
+  color: #4f46e5 !important;
+}
+
+.neuro-mode .text-\[\#888\], .neuro-mode .text-\[\#666\], .neuro-mode .text-\[\#aaa\] {
+  color: #475569 !important;
+}
+
+.neuro-mode .uppercase {
+  text-transform: none !important;
+}
+
+.neuro-mode .tracking-widest, .neuro-mode .tracking-tighter, .neuro-mode .tracking-wider {
+  letter-spacing: normal !important;
+}
+
+.neuro-mode table th {
+  background-color: #f8fafc !important;
+  color: #334155 !important;
+  border-bottom: 2px solid #e2e8f0 !important;
+}
+
+.neuro-mode table td {
+  border-bottom: 1px solid #f1f5f9 !important;
+  color: #334155 !important;
+}

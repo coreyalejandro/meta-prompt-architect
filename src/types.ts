@@ -15,7 +15,8 @@ export enum ModelType {
 export enum ThemeType {
   DARK = "dark",
   LIGHT = "light",
-  HIGH_CONTRAST = "high-contrast"
+  HIGH_CONTRAST = "high-contrast",
+  NEURO_FOCUS = "neuro-focus"
 }
 
 export const AttachmentSchema = z.object({
@@ -158,3 +159,19 @@ export const ConstitutionalMappingSchema = z.object({
   }))
 });
 export type ConstitutionalMappingResult = z.infer<typeof ConstitutionalMappingSchema>;
+
+export interface LiveModelConfig {
+  id: string;
+  provider: 'gemini' | 'ollama' | 'lmstudio' | 'openai' | 'anthropic';
+  modelId: string;
+  endpoint?: string;
+  apiKey?: string;
+  name: string;
+}
+
+export interface PlaygroundResponse {
+  modelId: string;
+  content: string;
+  loading: boolean;
+  error?: string;
+}

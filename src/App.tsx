@@ -5,10 +5,12 @@ import { UserIntent, AuditResult, StressTestResult, InstructionSet, ModelType, M
 import KnowledgeExpert from './components/KnowledgeExpert';
 import { auditIntent, stressTest, generateInstructionSet, getRetrospective, scanForPII, redTeamAudit, testCrossModelParity, mapConstitutionalStandards, testPlaygroundPrompt } from './services/gemini';
 import { estimateCost } from './services/tokenEstimator';
-import { Terminal, Cpu, ShieldAlert, ShieldCheck, Zap, Save, RefreshCw, AlertCircle, BookOpen, Layers, CheckCircle2, FileCode, Printer, Eye, HelpCircle, History, Download, Sun, Moon, Monitor, Info, FileText, Sparkles, GitBranch, DollarSign, Copy, FileJson, Search, Scale, Activity, Archive, Trash2 } from 'lucide-react';
+import { Terminal, Cpu, ShieldAlert, ShieldCheck, Zap, Save, RefreshCw, AlertCircle, BookOpen, Layers, CheckCircle2, FileCode, Printer, Eye, HelpCircle, History, Download, Sun, Moon, Monitor, Info, FileText, Sparkles, GitBranch, DollarSign, Copy, FileJson, Search, Scale, Activity, Archive, Trash2, Mic, MicOff, Settings, PauseCircle, PlayCircle, Volume2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { testLiveModel } from './services/playground';
 import { jsPDF } from 'jspdf';
 import { generateCursorRules } from './services/ideHandoff';
 import { generateExportBundle } from './utils/export';
+import { computeLineDiff } from './utils/diff';
 import Manual from './components/Manual';
 import AuditView from './components/AuditView';
 import AuditTrail from './components/AuditTrail';
@@ -16,6 +18,8 @@ import WorkflowBuilder from './components/WorkflowBuilder';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { storage } from './utils/storage';
 import { CrossModelParityResult, ConstitutionalMappingResult } from './types';
+import SheetsSync from './components/SheetsSync';
+import { FileSpreadsheet } from 'lucide-react';
 
 import Tooltip from './components/Tooltip';
 
@@ -54,7 +58,7 @@ export default function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'prompt' | 'sampling' | 'audit' | 'docs' | 'history' | 'workflow' | 'analytics' | 'compliance' | 'verification'>('prompt');
+  const [activeTab, setActiveTab] = useState<'prompt' | 'sampling' | 'audit' | 'docs' | 'history' | 'workflow' | 'analytics' | 'compliance' | 'verification' | 'sheets_sync'>('prompt');
   const [showDocs, setShowDocs] = useState(false);
   const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [historyFilterDate, setHistoryFilterDate] = useState('');
@@ -64,8 +68,27 @@ export default function App() {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const [playgroundInput, setPlaygroundInput] = useState('');
-  const [playgroundResult, setPlaygroundResult] = useState('');
-  const [playgroundLoading, setPlaygroundLoading] = useState(false);
+  const [activePlaygroundModels, setActivePlaygroundModels] = useState<import('./types').LiveModelConfig[]>([
+    { id: 'gemini-1.5-pro', provider: 'gemini', modelId: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' }
+  ]);
+  const [playgroundResponses, setPlaygroundResponses] = useState<Record<string, import('./types').PlaygroundResponse>>({});
+  const [showModelConfig, setShowModelConfig] = useState(false);
+  const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
+  const [diffViewMode, setDiffViewMode] = useState<'unified' | 'split'>('unified');
+
+  const [inputMode, setInputMode] = useState<'advanced' | 'guided'>('advanced');
+  const [guidedInput, setGuidedInput] = useState({ role: '', task: '', constraints: '', format: '' });
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  
+  const [intentVariables, setIntentVariables] = useState<Record<string, string>>({});
+  const [validationStatus, setValidationStatus] = useState({ hasVariables: false, hasBackwardsDesign: false });
+
+  // Neurodivergent-First Features State
+  const [isDataCollectionEnabled, setIsDataCollectionEnabled] = useState(false);
+  const [isGlobalPaused, setIsGlobalPaused] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [sessionTimer, setSessionTimer] = useState(0);
 
   useEffect(() => {
     const initStorage = async () => {
@@ -76,6 +99,10 @@ export default function App() {
       
       setHistory(loadedHistory);
       setMemory(loadedMemory);
+      
+      if (loadedHistory.length > 0) {
+        setSelectedHistoryItem(loadedHistory[0]);
+      }
       
       const autosavedIntentRaw = localStorage.getItem('architect_intent_raw_autosave');
       
@@ -132,6 +159,17 @@ export default function App() {
     
     return () => clearInterval(interval);
   }, [isLoaded]);
+
+  // Session Timer for Executive Function Support (Timers & Breaks)
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (!isGlobalPaused) {
+      interval = setInterval(() => {
+        setSessionTimer(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isGlobalPaused]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -202,6 +240,165 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [intent.raw, activeTab]);
+
+  const handleTTS = (text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopTTS = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  };
+
+  const formatSessionTime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hrs > 0 ? hrs + ':' : ''}${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Auto-formatting debounce to reduce visual noise
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!intent.raw || inputMode !== 'advanced') return;
+
+      let formatted = intent.raw;
+      
+      // Standardize whitespace
+      // Replace 3+ consecutive spaces with a single space, allowing 2 for some alignment
+      formatted = formatted.replace(/ {3,}/g, ' ');
+      // Replace 3+ consecutive newlines with 2 newlines
+      formatted = formatted.replace(/\n{3,}/g, '\n\n');
+      
+      // Correct common typos (case-preserving where simple)
+      const typoPairs: [RegExp, string][] = [
+        [/\bteh\b/g, 'the'],
+        [/\bTeh\b/g, 'The'],
+        [/\bdont\b/g, "don't"],
+        [/\bDont\b/g, "Don't"],
+        [/\bcant\b/g, "can't"],
+        [/\bCant\b/g, "Can't"],
+        [/\bwont\b/g, "won't"],
+        [/\bWont\b/g, "Won't"],
+        [/\bseperate\b/g, 'separate'],
+        [/\brecieve\b/g, 'receive'],
+        [/\bacheive\b/g, 'achieve']
+      ];
+
+      typoPairs.forEach(([pattern, fix]) => {
+        formatted = formatted.replace(pattern, fix);
+      });
+
+      if (formatted !== intent.raw) {
+        setIntent(prev => ({ ...prev, raw: formatted }));
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [intent.raw, inputMode]);
+
+  useEffect(() => {
+    // Parse variables looking for {{variable}} or ${variable}
+    const matches1 = intent.raw.match(/\{\{([^}]+)\}\}/g) || [];
+    const matches2 = intent.raw.match(/\$\{([^}]+)\}/g) || [];
+    const allMatches = [...matches1, ...matches2];
+    const vars = Array.from(new Set(allMatches.map(m => m.replace(/^(\{\{|\$\{)|(\}\}|\})$/g, '').trim())));
+    
+    setIntentVariables(prev => {
+       const next = { ...prev };
+       let changed = false;
+       
+       Object.keys(next).forEach(k => {
+         if (!vars.includes(k)) { delete next[k]; changed = true; }
+       });
+       
+       vars.forEach(v => {
+         if (!(v in next)) { next[v] = ''; changed = true; }
+       });
+       
+       return changed ? next : prev;
+    });
+  
+    const hasVars = vars.length > 0;
+    const hasBackwardsDesign = /(backward|end-?state|output\s+structure|success\s+criteria|goal)/i.test(intent.raw);
+    
+    setValidationStatus({ hasVariables: hasVars, hasBackwardsDesign });
+  }, [intent.raw]);
+
+  const handleGuidedChange = (field: keyof typeof guidedInput, value: string) => {
+    const next = { ...guidedInput, [field]: value };
+    setGuidedInput(next);
+    
+    const parts = [];
+    if (next.role) parts.push(`Role:\n${next.role}`);
+    if (next.task) parts.push(`Task:\n${next.task}`);
+    if (next.constraints) parts.push(`Constraints:\n${next.constraints}`);
+    if (next.format) parts.push(`Format:\n${next.format}`);
+    
+    const raw = parts.join('\n\n');
+    setIntent(prev => ({ ...prev, raw }));
+    setIgnorePii(false);
+  };
+
+  const toggleDictation = () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    // @ts-ignore
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    let transcriptBuffer = '';
+
+    recognition.onresult = (event: any) => {
+      let finalSegment = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalSegment += event.results[i][0].transcript;
+        }
+      }
+      
+      if (finalSegment) {
+        setIntent(prev => ({ 
+          ...prev, 
+          raw: prev.raw + (prev.raw && !prev.raw.endsWith(' ') ? ' ' : '') + finalSegment 
+        }));
+        setIgnorePii(false);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error', event.error);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognition.start();
+  };
 
   const handleFilesSelected = async (fileList: FileList | null) => {
     if (!fileList) return;
@@ -434,6 +631,7 @@ export default function App() {
         results: { audit: auditRes, stress: stressRes, instructionSet: instructionRes }
       };
       setHistory(prev => [newHistoryItem, ...prev].slice(0, 50));
+      setSelectedHistoryItem(newHistoryItem);
       
       setMemory(prev => [
         ...prev, 
@@ -543,18 +741,32 @@ export default function App() {
   const handlePlaygroundSubmit = async () => {
     if (!instructionSet?.finalPrompt || !playgroundInput.trim()) return;
     
-    setPlaygroundLoading(true);
-    setPlaygroundResult('');
+    // Initialize all as loading
+    const initialResponses: Record<string, import('./types').PlaygroundResponse> = {};
+    activePlaygroundModels.forEach(m => {
+      initialResponses[m.id] = { modelId: m.id, content: '', loading: true };
+    });
+    setPlaygroundResponses(initialResponses);
     
-    try {
-      const result = await testPlaygroundPrompt(instructionSet.finalPrompt, playgroundInput);
-      setPlaygroundResult(result);
-    } catch (err: any) {
-      setPlaygroundResult(`[ERROR] Execution failed:\n${err.message || String(err)}`);
-    } finally {
-      setPlaygroundLoading(false);
-    }
+    // Execute all concurrently
+    await Promise.all(
+      activePlaygroundModels.map(async (model) => {
+        try {
+          const result = await testLiveModel(model, instructionSet.finalPrompt, playgroundInput);
+          setPlaygroundResponses(prev => ({
+            ...prev,
+            [model.id]: { modelId: model.id, content: result, loading: false }
+          }));
+        } catch (err: any) {
+          setPlaygroundResponses(prev => ({
+            ...prev,
+            [model.id]: { modelId: model.id, content: '', error: err.message || String(err), loading: false }
+          }));
+        }
+      })
+    );
   };
+
 
   const handleCopyFullStack = () => {
     if (!instructionSet) return;
@@ -700,7 +912,8 @@ ${instructionSet.finalPrompt}
   const themeClasses = {
     [ThemeType.DARK]: "bg-[#0a0a0a] text-[#e0e0e0]",
     [ThemeType.LIGHT]: "bg-[#f5f5f5] text-[#1a1a1a]",
-    [ThemeType.HIGH_CONTRAST]: "bg-[#000] text-[#fff] border-white"
+    [ThemeType.HIGH_CONTRAST]: "bg-[#000] text-[#fff] border-white",
+    [ThemeType.NEURO_FOCUS]: "neuro-mode bg-[#fdfaf6] text-[#2b2b2b] transition-all"
   };
 
   const handleRetrospective = async () => {
@@ -762,6 +975,26 @@ ${instructionSet.finalPrompt}
               </button>
             </div>
             <div className="flex items-center gap-2 border-r border-[#1a1a1a] pr-4">
+              <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500 mr-2 flex items-center gap-1">
+                {formatSessionTime(sessionTimer)}
+              </span>
+              <button
+                onClick={() => setIsGlobalPaused(prev => !prev)}
+                className={`p-1 rounded-sm ${isGlobalPaused ? 'text-red-500 bg-red-500/10' : 'hover:text-[#aaa]'}`}
+                title={isGlobalPaused ? "Resume Session" : "Pause Session (Universal Pause)"}
+              >
+                {isGlobalPaused ? <PlayCircle size={14} /> : <PauseCircle size={14} />}
+              </button>
+              <button
+                onClick={() => setShowSettingsPanel(true)}
+                className={`p-1 rounded-sm hover:text-[#aaa]`}
+                title="Accessibility & Data Settings"
+              >
+                <Settings size={14} />
+              </button>
+            </div>
+            
+            <div className="flex items-center gap-2 border-r border-[#1a1a1a] pr-4">
               <button 
                 onClick={() => setIntent(prev => ({ ...prev, theme: ThemeType.DARK }))}
                 className={`p-1 rounded-sm ${intent.theme === ThemeType.DARK ? 'text-[#00ff00] bg-[#1a1a1a]' : 'hover:text-[#aaa]'}`}
@@ -782,6 +1015,13 @@ ${instructionSet.finalPrompt}
                 title="High Contrast"
               >
                 <Monitor size={14} />
+              </button>
+              <button 
+                onClick={() => setIntent(prev => ({ ...prev, theme: ThemeType.NEURO_FOCUS }))}
+                className={`p-1 rounded-sm ${intent.theme === ThemeType.NEURO_FOCUS ? 'text-indigo-600 bg-indigo-100' : 'hover:text-[#aaa]'}`}
+                title="Neuro-Focus Theme"
+              >
+                <Eye size={14} />
               </button>
             </div>
 
@@ -867,7 +1107,7 @@ ${instructionSet.finalPrompt}
             
             <div className="space-y-4">
               <div>
-                <div className="flex justify-between items-center mb-2">
+                  <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2">
                     <label className="text-[11px] text-[#aaa] uppercase font-bold tracking-wider block">User Intent / Idea</label>
                     {lastSavedTime && (
@@ -877,29 +1117,144 @@ ${instructionSet.finalPrompt}
                       </span>
                     )}
                   </div>
-                  <button 
-                    onClick={() => {
-                      // Logic to trigger expert advice on current intent
-                      alert("Expert Analysis: Your intent is high-dimensional. Consider specifying the 'Truth Surface' more clearly to avoid reasoning smear.");
-                    }}
-                    className="text-[10px] text-[#00ff00] uppercase font-bold flex items-center gap-1 hover:text-[#00cc00] transition-colors"
-                    aria-label="Get expert advice"
-                  >
-                    <Sparkles size={10} /> Expert_Advice
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={toggleDictation}
+                      className={`text-[10px] uppercase font-bold flex items-center gap-1 transition-colors border px-2 py-1 rounded-sm ${isListening ? 'text-red-400 border-red-800 bg-red-950/30' : 'text-zinc-400 border-zinc-800 bg-zinc-900 hover:text-white'}`}
+                      aria-label={isListening ? "Stop dictation" : "Start dictation"}
+                    >
+                      {isListening ? <MicOff size={10} /> : <Mic size={10} />}
+                      {isListening ? 'Stop' : 'Speak'}
+                    </button>
+                    <button 
+                      onClick={() => setInputMode(prev => prev === 'advanced' ? 'guided' : 'advanced')}
+                      className="text-[10px] text-zinc-400 uppercase font-bold flex items-center gap-1 hover:text-white transition-colors border border-zinc-800 px-2 py-1 bg-zinc-900 rounded-sm"
+                      aria-label="Toggle input mode"
+                    >
+                      {inputMode === 'advanced' ? 'Switch to Guided Mode' : 'Switch to Advanced Mode'}
+                    </button>
+                    <button 
+                      onClick={() => {
+                        // Logic to trigger expert advice on current intent
+                        alert("Expert Analysis: Your intent is high-dimensional. Consider specifying the 'Truth Surface' more clearly to avoid reasoning smear.");
+                      }}
+                      className="text-[10px] text-[#00ff00] uppercase font-bold flex items-center gap-1 hover:text-[#00cc00] transition-colors"
+                      aria-label="Get expert advice"
+                    >
+                      <Sparkles size={10} /> Expert_Advice
+                    </button>
+                  </div>
                 </div>
-                <Tooltip className="w-full" text="Enter your raw AI intent or prompt idea here. Be as descriptive as possible.">
-                  <textarea 
-                    value={intent.raw}
-                    onChange={(e) => {
-                      setIntent(prev => ({ ...prev, raw: e.target.value }));
-                      setIgnorePii(false);
-                    }}
-                    placeholder="Describe what you want the AI to do..."
-                    className="w-full h-[500px] min-h-[400px] bg-[#050505] border border-[#1a1a1a] p-8 text-xl leading-relaxed focus:border-[#00ff00] outline-none transition-colors border-2 resize-y custom-scrollbar"
-                    aria-label="AI Intent Input"
-                  />
-                </Tooltip>
+                {inputMode === 'advanced' ? (
+                  <div className="space-y-2">
+                    <div className="flex gap-2 flex-wrap">
+                      {[
+                        { label: 'Professional Tone', text: 'Respond using a highly professional and corporate tone.' },
+                        { label: 'Concise Summary', text: 'Provide a concise summary, avoiding unnecessary details.' },
+                        { label: 'Refactor to Clean Code', text: 'Refactor the following code to adhere to clean code principles, improving readability and maintainability.' }
+                      ].map((snippet) => (
+                        <button
+                          key={snippet.label}
+                          onClick={() => {
+                            setIntent(prev => ({ ...prev, raw: prev.raw + (prev.raw && !prev.raw.endsWith(' ') && !prev.raw.endsWith('\n') ? '\n\n' : '') + snippet.text }));
+                            setIgnorePii(false);
+                          }}
+                          className="text-[10px] text-zinc-400 uppercase font-bold transition-colors border border-zinc-800 px-2 py-1 bg-zinc-900 rounded-sm hover:bg-[#00ff00]/10 hover:border-[#00ff00]/50 hover:text-[#00ff00]"
+                          aria-label={`Insert ${snippet.label} snippet`}
+                        >
+                          + {snippet.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-col gap-2 my-2">
+                      <div className="flex items-center gap-2 bg-[#050505] p-2 border border-[#1a1a1a]">
+                        <span className="text-[10px] text-zinc-400 font-bold uppercase">Validation Status:</span>
+                        <div className="flex items-center gap-1">
+                          <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm flex items-center gap-1 ${validationStatus.hasVariables && validationStatus.hasBackwardsDesign ? 'bg-[#00ff00]/10 text-[#00ff00]' : 'bg-red-500/10 text-red-500'}`}>
+                            {validationStatus.hasVariables && validationStatus.hasBackwardsDesign ? <><CheckCircle2 size={10} /> VALIDATED</> : <><AlertCircle size={10} /> PENDING</>}
+                          </span>
+                          {!validationStatus.hasVariables && <span className="text-[10px] text-zinc-500 ml-2">Missing variable placeholders (e.g. {'{{variable}}'})</span>}
+                          {!validationStatus.hasBackwardsDesign && <span className="text-[10px] text-zinc-500 ml-2">Missing backwards design terms (e.g. "goal", "output")</span>}
+                        </div>
+                      </div>
+                      
+                      {Object.keys(intentVariables).length > 0 && (
+                        <div className="bg-[#050505] border border-[#1a1a1a] p-4">
+                          <h4 className="text-[10px] text-[#00ff00] font-bold uppercase mb-3 flex items-center gap-2"><FileCode size={12}/> Detected Variables</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            {Object.entries(intentVariables).map(([key, val]) => (
+                              <div key={key} className="flex flex-col gap-1">
+                                <label className="text-[10px] text-zinc-400 uppercase font-mono">{key}</label>
+                                <input
+                                  type="text"
+                                  value={val}
+                                  onChange={(e) => setIntentVariables(prev => ({ ...prev, [key]: e.target.value }))}
+                                  placeholder={`Value for ${key}`}
+                                  className="bg-[#111] border border-[#333] text-sm p-2 text-white outline-none focus:border-[#00ff00]"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <Tooltip className="w-full" text="Enter your raw AI intent or prompt idea here. Be as descriptive as possible.">
+                      <textarea 
+                        value={intent.raw}
+                        onChange={(e) => {
+                          setIntent(prev => ({ ...prev, raw: e.target.value }));
+                          setIgnorePii(false);
+                        }}
+                        placeholder="Describe what you want the AI to do..."
+                        className="neuro-mode w-full h-[500px] min-h-[400px] bg-[#050505] border border-[#1a1a1a] p-8 text-xl leading-relaxed focus:border-[#00ff00] outline-none transition-colors border-2 resize-y custom-scrollbar"
+                        aria-label="AI Intent Input"
+                      />
+                    </Tooltip>
+                  </div>
+                ) : (
+                  <div className="space-y-4 bg-[#050505] border border-[#1a1a1a] p-8">
+                    <div>
+                      <label className="text-[10px] text-[#00ff00] font-bold uppercase block mb-1">Target Persona / Role</label>
+                      <input 
+                        type="text"
+                        value={guidedInput.role}
+                        onChange={(e) => handleGuidedChange('role', e.target.value)}
+                        placeholder="e.g. Expert Senior Full Stack Engineer"
+                        className="w-full bg-[#0a0a0a] border border-[#222] p-3 text-sm focus:border-[#00ff00] outline-none transition-colors text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#00ff00] font-bold uppercase block mb-1">Core Task / Objective</label>
+                      <textarea 
+                        value={guidedInput.task}
+                        onChange={(e) => handleGuidedChange('task', e.target.value)}
+                        placeholder="e.g. Build a responsive kanban board using React and Tailwind CSS."
+                        className="w-full h-[150px] bg-[#0a0a0a] border border-[#222] p-3 text-sm focus:border-[#00ff00] outline-none transition-colors resize-y text-white custom-scrollbar"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#00ff00] font-bold uppercase block mb-1">Key Constraints / Requirements</label>
+                      <textarea 
+                        value={guidedInput.constraints}
+                        onChange={(e) => handleGuidedChange('constraints', e.target.value)}
+                        placeholder="e.g. Use dark mode only. Do not use external CSS in JS libraries. Add animations."
+                        className="w-full h-[100px] bg-[#0a0a0a] border border-[#222] p-3 text-sm focus:border-[#00ff00] outline-none transition-colors resize-y text-white custom-scrollbar"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#00ff00] font-bold uppercase block mb-1">Expected Output Format</label>
+                      <input 
+                        type="text"
+                        value={guidedInput.format}
+                        onChange={(e) => handleGuidedChange('format', e.target.value)}
+                        placeholder="e.g. Single component file, clear code comments."
+                        className="w-full bg-[#0a0a0a] border border-[#222] p-3 text-sm focus:border-[#00ff00] outline-none transition-colors text-white"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Document Workspace Area */}
                 <div className="mt-4 bg-[#050505] border border-[#1a1a1a] p-4 rounded-sm flex flex-col gap-3">
@@ -1604,6 +1959,14 @@ ${instructionSet.finalPrompt}
                           <ShieldCheck size={12} /> Verification
                         </button>
                       </Tooltip>
+                      <Tooltip text="Sync campaigns and compiled prompts to Google Sheets.">
+                        <button 
+                          onClick={() => setActiveTab('sheets_sync')}
+                          className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 transition-colors whitespace-nowrap ${activeTab === 'sheets_sync' ? 'bg-[#0f0f0f] text-[#00ff00]' : 'text-[#666] hover:text-[#aaa]'}`}
+                        >
+                          <FileSpreadsheet size={12} /> Sheets_Sync
+                        </button>
+                      </Tooltip>
                     </div>
                     <div className="flex items-center gap-2 pr-2 ml-4 flex-shrink-0">
                       <Tooltip text="Copy the entire instruction set, system role, and cognitive stack to clipboard.">
@@ -1682,6 +2045,11 @@ ${instructionSet.finalPrompt}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              <Tooltip text="Read aloud with text-to-speech.">
+                                <button onClick={() => handleTTS(instructionSet.finalPrompt)} className="text-[9px] text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors">
+                                  <Volume2 size={12} /> SPEAK
+                                </button>
+                              </Tooltip>
                               <Tooltip text="Copy instruction set to clipboard.">
                                 <button onClick={() => handleBoxCopy(instructionSet.finalPrompt)} className="text-[9px] text-[#666] hover:text-[#00ff00] flex items-center gap-1 transition-colors">
                                   <Copy size={12} /> COPY
@@ -1702,67 +2070,177 @@ ${instructionSet.finalPrompt}
                           <pre className="bg-[#050505] p-4 text-[11px] text-[#aaa] leading-relaxed whitespace-pre-wrap border border-[#1a1a1a] max-h-96 overflow-y-auto custom-scrollbar font-mono">
                             {instructionSet.finalPrompt}
                           </pre>
+
+                          <div className="mt-2 flex items-center gap-3 bg-[#0a0a0a] p-2 border border-[#1a1a1a] justify-between">
+                            <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">How was this generated prompt? (Real-time feedback)</span>
+                            <div className="flex items-center gap-2">
+                              <button className="flex items-center gap-1 px-3 py-1 bg-[#1a1a1a] hover:bg-[#222] text-[#00ff00] text-[10px] uppercase font-bold border border-[#333] transition-colors">
+                                <ThumbsUp size={12} /> Good
+                              </button>
+                              <button className="flex items-center gap-1 px-3 py-1 bg-[#1a1a1a] hover:bg-[#222] text-red-500 text-[10px] uppercase font-bold border border-[#333] transition-colors">
+                                <ThumbsDown size={12} /> Needs Work
+                              </button>
+                            </div>
+                          </div>
                         </div>
                         
                         {/* Inline Playground */}
                         <div className="pt-6 border-t border-[#1a1a1a]">
-                          <div className="flex items-center gap-2 mb-3">
-                            <Cpu size={14} className="text-[#00ff00]" />
-                            <span className="text-[11px] text-[#00ff00] font-bold uppercase tracking-wider">Inline Playground</span>
-                            <span className="text-[9px] text-[#666] ml-2">Test your final prompt live</span>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <Cpu size={14} className="text-[#00ff00]" />
+                              <span className="text-[11px] text-[#00ff00] font-bold uppercase tracking-wider">Multi-Model Playground</span>
+                              <span className="text-[9px] text-[#666] ml-2">Test LIVE against up to 4 models concurrently</span>
+                            </div>
+                            <button
+                              onClick={() => setShowModelConfig(!showModelConfig)}
+                              className={`text-[9px] font-bold uppercase tracking-widest flex items-center gap-1 px-2 py-1 border ${showModelConfig ? 'border-[#00ff00] text-[#00ff00] bg-[#00ff00]/10' : 'border-[#1a1a1a] text-[#666] hover:text-white'}`}
+                            >
+                              <Settings size={10} /> Model Config
+                            </button>
                           </div>
                           
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            <div className="space-y-3">
-                              <label className="text-[9px] text-[#888] uppercase block">Test Input</label>
-                              <textarea
-                                value={playgroundInput}
-                                onChange={(e) => setPlaygroundInput(e.target.value)}
-                                placeholder="Enter a sample message to test the prompt against..."
-                                className="w-full bg-[#0a0a0a] border border-[#222] p-3 text-[11px] text-[#eee] font-mono h-32 focus:border-[#00ff00] transition-colors resize-none placeholder-[#444]"
-                              />
-                              <button
-                                onClick={handlePlaygroundSubmit}
-                                disabled={playgroundLoading || !playgroundInput.trim()}
-                                className="flex items-center justify-center gap-2 w-full bg-[#1a1a1a] hover:bg-[#222] border border-[#333] text-[#00ff00] py-2 text-[10px] font-bold uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {playgroundLoading ? (
-                                  <>
-                                    <RefreshCw size={12} className="animate-spin" />
-                                    Executing...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Zap size={12} />
-                                    Run Selection
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                            
-                            <div className="space-y-3">
-                              <div className="flex justify-between items-center">
-                                <label className="text-[9px] text-[#888] uppercase block">Output Console</label>
-                                {playgroundResult && (
-                                  <button onClick={() => handleBoxCopy(playgroundResult)} className="text-[9px] text-[#666] hover:text-[#00ff00] flex items-center gap-1 transition-colors">
-                                    <Copy size={10} /> COPY RESULT
+                          {showModelConfig && (
+                            <div className="bg-[#050505] border border-[#1a1a1a] p-4 mb-4">
+                              <h4 className="text-[10px] text-[#00ff00] font-bold uppercase tracking-wider mb-2">Active Models ({activePlaygroundModels.length}/4)</h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                                {activePlaygroundModels.map((model, idx) => (
+                                  <div key={idx} className="bg-[#0a0a0a] border border-[#222] p-3 flex flex-col gap-2">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-[10px] text-white font-bold">{model.name}</span>
+                                      <button 
+                                        onClick={() => setActivePlaygroundModels(prev => prev.filter((_, i) => i !== idx))}
+                                        className="text-red-500 hover:text-red-400 text-[9px] uppercase"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div>
+                                        <label className="text-[8px] text-[#666] uppercase">Provider</label>
+                                        <select 
+                                          value={model.provider}
+                                          onChange={(e) => {
+                                            const val = e.target.value as any;
+                                            setActivePlaygroundModels(prev => prev.map((m, i) => i === idx ? { ...m, provider: val } : m));
+                                          }}
+                                          className="w-full bg-[#111] border border-[#333] text-[10px] text-white p-1"
+                                        >
+                                          <option value="gemini">Gemini</option>
+                                          <option value="ollama">Ollama (Local)</option>
+                                          <option value="lmstudio">LM Studio (Local)</option>
+                                          <option value="openai">OpenAI</option>
+                                          <option value="anthropic">Anthropic</option>
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="text-[8px] text-[#666] uppercase">Model ID</label>
+                                        <input 
+                                          type="text"
+                                          value={model.modelId}
+                                          onChange={(e) => setActivePlaygroundModels(prev => prev.map((m, i) => i === idx ? { ...m, modelId: e.target.value, id: `${m.provider}-${e.target.value}` } : m))}
+                                          className="w-full bg-[#111] border border-[#333] text-[10px] text-white p-1"
+                                          placeholder="e.g. llama3"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {(model.provider === 'ollama' || model.provider === 'lmstudio') && (
+                                        <div>
+                                          <label className="text-[8px] text-[#666] uppercase">Endpoint URL</label>
+                                          <input 
+                                            type="text"
+                                            value={model.endpoint || ''}
+                                            onChange={(e) => setActivePlaygroundModels(prev => prev.map((m, i) => i === idx ? { ...m, endpoint: e.target.value } : m))}
+                                            className="w-full bg-[#111] border border-[#333] text-[10px] text-white p-1"
+                                            placeholder={model.provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234'}
+                                          />
+                                        </div>
+                                      )}
+                                      {(model.provider === 'openai' || model.provider === 'anthropic' || model.provider === 'gemini') && (
+                                        <div className="col-span-2">
+                                          <label className="text-[8px] text-[#666] uppercase">API Key (Optional for Gemini if env set)</label>
+                                          <input 
+                                            type="password"
+                                            value={model.apiKey || ''}
+                                            onChange={(e) => setActivePlaygroundModels(prev => prev.map((m, i) => i === idx ? { ...m, apiKey: e.target.value } : m))}
+                                            className="w-full bg-[#111] border border-[#333] text-[10px] text-white p-1"
+                                            placeholder="sk-..."
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                                {activePlaygroundModels.length < 4 && (
+                                  <button
+                                    onClick={() => setActivePlaygroundModels(prev => [...prev, { id: `new-model-${Date.now()}`, provider: 'ollama', modelId: 'llama3', name: 'New Model' }])}
+                                    className="border border-dashed border-[#333] flex items-center justify-center text-[10px] text-[#666] hover:text-[#00ff00] hover:border-[#00ff00] transition-colors p-4"
+                                  >
+                                    + Add Model Comparison
                                   </button>
                                 )}
                               </div>
-                              <div className="w-full bg-[#050505] border border-[#1a1a1a] p-3 text-[11px] text-[#ccc] font-mono h-[calc(100%-24px)] overflow-y-auto min-h-32">
-                                {playgroundLoading ? (
-                                  <div className="flex flex-col items-center justify-center h-full text-[#444] gap-2">
-                                    <div className="w-4 h-4 rounded-full border-2 border-[#444] border-t-[#00ff00] animate-spin" />
-                                    <span className="text-[9px] uppercase tracking-wider">Awaiting LLM Response...</span>
-                                  </div>
-                                ) : playgroundResult ? (
-                                  <div className="whitespace-pre-wrap">{playgroundResult}</div>
-                                ) : (
-                                  <div className="flex items-center justify-center h-full text-[#333] text-[9px] uppercase">
-                                    Awaiting input execution...
-                                  </div>
-                                )}
+                            </div>
+                          )}
+
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <label className="text-[9px] text-[#888] uppercase block">Test Input</label>
+                              <div className="flex gap-2">
+                                <textarea
+                                  value={playgroundInput}
+                                  onChange={(e) => setPlaygroundInput(e.target.value)}
+                                  placeholder="Enter a sample message to test the prompt against..."
+                                  className="flex-1 bg-[#0a0a0a] border border-[#222] p-3 text-[11px] text-[#eee] font-mono min-h-[60px] focus:border-[#00ff00] transition-colors resize-y placeholder-[#444]"
+                                />
+                                <button
+                                  onClick={handlePlaygroundSubmit}
+                                  disabled={activePlaygroundModels.some(m => playgroundResponses[m.id]?.loading) || !playgroundInput.trim() || activePlaygroundModels.length === 0}
+                                  className="w-32 bg-[#1a1a1a] hover:bg-[#222] border border-[#333] text-[#00ff00] flex flex-col items-center justify-center gap-1 text-[10px] font-bold uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {activePlaygroundModels.some(m => playgroundResponses[m.id]?.loading) ? (
+                                    <><RefreshCw size={14} className="animate-spin" /> RUNNING...</>
+                                  ) : (
+                                    <><Zap size={14} /> RUN ALL</>
+                                  )}
+                                </button>
                               </div>
+                            </div>
+                            
+                            {/* Side-by-side results */}
+                            <div className={`grid grid-cols-1 ${activePlaygroundModels.length > 1 ? (activePlaygroundModels.length > 2 ? 'lg:grid-cols-3' : 'lg:grid-cols-2') : ''} gap-4`}>
+                              {activePlaygroundModels.map(model => {
+                                const response = playgroundResponses[model.id];
+                                return (
+                                  <div key={model.id} className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                      <label className="text-[9px] text-[#888] uppercase block">{model.name} ({model.modelId})</label>
+                                      {response?.content && (
+                                        <button onClick={() => handleBoxCopy(response.content)} className="text-[9px] text-[#666] hover:text-[#00ff00] flex items-center gap-1 transition-colors">
+                                          <Copy size={10} /> COPY
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="w-full bg-[#050505] border border-[#1a1a1a] p-3 text-[11px] font-mono h-64 overflow-y-auto custom-scrollbar">
+                                      {response?.loading ? (
+                                        <div className="flex flex-col items-center justify-center h-full text-[#444] gap-2">
+                                          <div className="w-4 h-4 rounded-full border-2 border-[#444] border-t-[#00ff00] animate-spin" />
+                                          <span className="text-[9px] uppercase tracking-wider">Awaiting response...</span>
+                                        </div>
+                                      ) : response?.error ? (
+                                        <div className="text-red-500 whitespace-pre-wrap">{response.error}</div>
+                                      ) : response?.content ? (
+                                        <div className="text-[#ccc] whitespace-pre-wrap">{response.content}</div>
+                                      ) : (
+                                        <div className="flex items-center justify-center h-full text-[#333] text-[9px] uppercase">
+                                          Awaiting input execution...
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         </div>
@@ -1998,33 +2476,218 @@ ${instructionSet.finalPrompt}
                               const matchesSearch = item.intent.raw.toLowerCase().includes(historySearchTerm.toLowerCase());
                               const matchesDate = historyFilterDate ? item.timestamp.startsWith(historyFilterDate) : true;
                               return matchesSearch && matchesDate;
-                            }).map((item, i) => (
-                              <div 
-                                key={item.id} 
-                                className="bg-[#050505] border border-[#1a1a1a] p-3 rounded-sm hover:border-[#00ff00] cursor-pointer transition-colors"
-                                onClick={() => {
-                                  setInstructionSet(item.results.instructionSet);
-                                  setAudit(item.results.audit);
-                                  setStress(item.results.stress);
-                                }}
-                              >
-                                <div className="flex justify-between items-center mb-2">
-                                  <span className="text-[10px] text-[#00ff00] font-bold">v{history.length - i}.0</span>
-                                  <span className="text-[10px] text-[#666]">{new Date(item.timestamp).toLocaleTimeString()}</span>
+                            }).map((item) => {
+                              const verNum = history.length - history.indexOf(item);
+                              return (
+                                <div 
+                                  key={item.id} 
+                                  id={`history-card-${item.id}`}
+                                  className={`border p-3 rounded-sm cursor-pointer transition-all ${
+                                    selectedHistoryItem?.id === item.id 
+                                      ? 'bg-[#00ff22]/5 border-[#00ff22] text-[#00ff00]' 
+                                      : 'bg-[#050505] border-[#1a1a1a] hover:border-[#00ff00]/60 text-[#aaa]'
+                                  }`}
+                                  onClick={() => {
+                                    setSelectedHistoryItem(item);
+                                  }}
+                                >
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="text-[10px] text-[#00ff00] font-bold">v{verNum}.0</span>
+                                    <span className="text-[10px] text-[#666]">{new Date(item.timestamp).toLocaleTimeString()}</span>
+                                  </div>
+                                  <p className="text-xs text-[#aaa] line-clamp-1 font-mono">{item.intent.raw}</p>
                                 </div>
-                                <p className="text-xs text-[#aaa] line-clamp-1">{item.intent.raw}</p>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                           
-                          <div className="md:col-span-2 bg-[#050505] border border-[#1a1a1a] p-4 rounded-sm">
-                            <div className="flex items-center gap-2 text-[#666] mb-4">
-                              <RefreshCw size={14} />
-                              <span className="text-[10px] font-bold uppercase">Architectural Diff Viewer</span>
-                            </div>
-                            <div className="text-[10px] text-[#444] italic text-center py-20 border border-dashed border-[#1a1a1a]">
-                              Select two versions to compare architectural drift...
-                            </div>
+                          <div id="arch-diff-viewer-panel" className="md:col-span-2 bg-[#050505] border border-[#1a1a1a] p-5 rounded-sm flex flex-col justify-between">
+                            {selectedHistoryItem ? (() => {
+                              const verNum = history.length - history.indexOf(selectedHistoryItem);
+                              const oldPrompt = selectedHistoryItem.results.instructionSet.finalPrompt;
+                              const newPrompt = instructionSet?.finalPrompt || '';
+                              const diffChanges = computeLineDiff(oldPrompt, newPrompt);
+                              
+                              const additions = diffChanges.filter(c => c.type === 'added').length;
+                              const deletions = diffChanges.filter(c => c.type === 'removed').length;
+                              const isIdentical = additions === 0 && deletions === 0;
+                              
+                              // Align side-by-side placeholders
+                              const oldLinesWithPlaceholders: { type: 'removed' | 'unchanged' | 'placeholder'; value: string }[] = [];
+                              const newLinesWithPlaceholders: { type: 'added' | 'unchanged' | 'placeholder'; value: string }[] = [];
+
+                              diffChanges.forEach(change => {
+                                if (change.type === 'removed') {
+                                  oldLinesWithPlaceholders.push({ type: 'removed', value: change.value });
+                                  newLinesWithPlaceholders.push({ type: 'placeholder', value: '' });
+                                } else if (change.type === 'added') {
+                                  oldLinesWithPlaceholders.push({ type: 'placeholder', value: '' });
+                                  newLinesWithPlaceholders.push({ type: 'added', value: change.value });
+                                } else {
+                                  oldLinesWithPlaceholders.push({ type: 'unchanged', value: change.value });
+                                  newLinesWithPlaceholders.push({ type: 'unchanged', value: change.value });
+                                }
+                              });
+
+                              return (
+                                <div className="space-y-4">
+                                  {/* Title & Actions */}
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#1a1a1a] pb-4">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-[#00ff00] bg-[#00ff00]/10 border border-[#00ff00]/30 px-2 py-0.5 rounded-sm uppercase tracking-wider">Version v{verNum}.0</span>
+                                        <span className="text-[10px] text-[#666] font-mono">{new Date(selectedHistoryItem.timestamp).toLocaleString()}</span>
+                                      </div>
+                                      <div className="text-[10px] text-[#888] font-semibold uppercase tracking-wider flex items-center gap-2">
+                                        <span>Target Model: <strong className="text-white font-mono">{selectedHistoryItem.results.instructionSet.targetModel}</strong></span>
+                                        <span className="text-[#333]">|</span>
+                                        <span className="flex items-center gap-1">
+                                          <span className="text-emerald-400 font-bold font-mono">+{additions}</span>
+                                          <span className="text-rose-400 font-bold font-mono">-{deletions}</span>
+                                        </span>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        id="btn-restore-version"
+                                        onClick={() => {
+                                          setInstructionSet(selectedHistoryItem.results.instructionSet);
+                                          setAudit(selectedHistoryItem.results.audit);
+                                          setStress(selectedHistoryItem.results.stress);
+                                          setActiveTab('prompt');
+                                        }}
+                                        className="bg-[#00ff00] text-[#000] hover:bg-[#00cc00] px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 rounded-sm"
+                                        title="Load this version as the active workspace, matching all audit findings and stress parameters"
+                                      >
+                                        <Save size={11} /> Restore Draft
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Human Intent comparison block */}
+                                  <div className="bg-[#0d0d0d] border border-[#161616] p-3 rounded-sm space-y-1.5">
+                                    <span className="text-[9px] text-[#555] uppercase font-bold tracking-widest block">Original Prompt Intent Compared To Active</span>
+                                    <p className="text-[11px] text-[#ccc] font-mono whitespace-pre-wrap max-h-16 overflow-y-auto bg-[#050505] p-2 border border-[#111] rounded-sm select-text selection:bg-[#00ff00]/25">
+                                      {selectedHistoryItem.intent.raw}
+                                    </p>
+                                  </div>
+
+                                  {/* Toggles for View Mode */}
+                                  <div className="flex items-center justify-between bg-[#0a0a0a] border border-[#111] px-3 py-1.5 rounded-sm">
+                                    <span className="text-[9px] text-[#666] uppercase font-bold tracking-widest flex items-center gap-1"><Eye size={10} className="text-[#00ff00]" /> Diff Mode</span>
+                                    <div className="flex bg-[#111] border border-[#222] p-0.5 rounded-xs">
+                                      <button 
+                                        id="btn-diff-mode-unified"
+                                        onClick={() => setDiffViewMode('unified')} 
+                                        className={`px-2.5 py-1 text-[9px] font-bold uppercase rounded-xs transition-all ${diffViewMode === 'unified' ? 'bg-[#00ff00] text-[#000]' : 'text-[#666] hover:text-[#aaa]'}`}
+                                      >
+                                        Unified
+                                      </button>
+                                      <button 
+                                        id="btn-diff-mode-split"
+                                        onClick={() => setDiffViewMode('split')} 
+                                        className={`px-2.5 py-1 text-[9px] font-bold uppercase rounded-xs transition-all ${diffViewMode === 'split' ? 'bg-[#00ff00] text-[#000]' : 'text-[#666] hover:text-[#aaa]'}`}
+                                      >
+                                        Split Screen
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Diff Output viewport */}
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-[9px] text-[#444] uppercase tracking-widest px-1">
+                                      <span>Historical Base Prompt (Left / Red)</span>
+                                      <span>Active Workspace Prompt (Right / Green)</span>
+                                    </div>
+
+                                    {/* Diff Canvas container */}
+                                    <div className="relative border border-[#1a1a1a] rounded overflow-hidden">
+                                      {isIdentical ? (
+                                        <div className="bg-[#070707] py-16 text-center space-y-2 border-t border-[#111]">
+                                          <CheckCircle2 className="mx-auto text-[#00ff00]" size={24} />
+                                          <p className="text-[11px] text-[#00ff22] font-semibold tracking-wider uppercase">0 Drift Detected</p>
+                                          <p className="text-[10px] text-[#555] max-w-sm mx-auto">This historical version matches the exact compilation syntax of the active workspace instruction set prompt.</p>
+                                        </div>
+                                      ) : diffViewMode === 'unified' ? (
+                                        <div id="unified-diff-view" className="max-h-[380px] overflow-y-auto bg-[#030303] divide-y divide-[#111] custom-scrollbar selection:bg-[#00ff00]/20">
+                                          {diffChanges.map((change, idx) => (
+                                            <div 
+                                              key={idx} 
+                                              className={`px-3 py-1 font-mono text-[10.5px] leading-relaxed break-keep select-text flex items-start gap-3 ${
+                                                change.type === 'removed' ? 'bg-[#ff003c]/8 text-[#f87171] border-l-2 border-[#ea580c]' :
+                                                change.type === 'added' ? 'bg-[#10b981]/8 text-[#34d399] border-l-2 border-[#10b981]' :
+                                                'text-[#777] hover:bg-[#fff]/[0.01]'
+                                              }`}
+                                            >
+                                              <span className="text-[9px] font-bold text-[#444] w-4 text-right select-none select-none inline-block mt-0.5">
+                                                {change.type === 'removed' ? '-' : change.type === 'added' ? '+' : ' '}
+                                              </span>
+                                              <span className="whitespace-pre-wrap">{change.value || ' '}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        /* Side-by-side split screen view */
+                                        <div id="split-diff-view" className="grid grid-cols-1 lg:grid-cols-2 bg-[#020202] divide-y lg:divide-y-0 lg:divide-x divide-[#1a1a1a]">
+                                          {/* Left block - Old basis */}
+                                          <div className="flex flex-col">
+                                            <div className="bg-[#070707] px-3 py-1 border-b border-[#111] flex justify-between items-center text-[9px] text-[#555] uppercase font-bold select-none">
+                                              <span>v{verNum}.0 historical payload</span>
+                                            </div>
+                                            <div className="max-h-[350px] overflow-y-auto py-2 divide-y divide-[#111]/10 custom-scrollbar select-text selection:bg-[#ff0044]/20">
+                                              {oldLinesWithPlaceholders.map((line, idx) => (
+                                                <div 
+                                                  key={idx} 
+                                                  className={`px-3 py-0.5 min-h-[1.5rem] font-mono text-[10px] leading-relaxed flex items-start gap-2 ${
+                                                    line.type === 'removed' ? 'bg-[#ff0044]/10 text-[#f87171] border-l-2 border-[#ef4444]' :
+                                                    line.type === 'placeholder' ? 'bg-[#1a1a1a]/40 opacity-20 select-none' :
+                                                    'text-[#555]'
+                                                  }`}
+                                                >
+                                                  <span className="text-[8px] text-[#444] w-2 text-right select-none inline-block mt-0.5">
+                                                    {line.type === 'removed' ? '-' : ' '}
+                                                  </span>
+                                                  <span className="whitespace-pre-wrap">{line.type === 'placeholder' ? ' ' : (line.value || ' ')}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                          
+                                          {/* Right block - Current workspace draft */}
+                                          <div className="flex flex-col">
+                                            <div className="bg-[#070707] px-3 py-1 border-b border-[#111] flex justify-between items-center text-[9px] text-[#555] uppercase font-bold select-none">
+                                              <span>Active workspace payload</span>
+                                            </div>
+                                            <div className="max-h-[350px] overflow-y-auto py-2 divide-y divide-[#111]/10 custom-scrollbar select-text selection:bg-[#00ff00]/25">
+                                              {newLinesWithPlaceholders.map((line, idx) => (
+                                                <div 
+                                                  key={idx} 
+                                                  className={`px-3 py-0.5 min-h-[1.5rem] font-mono text-[10px] leading-relaxed flex items-start gap-2 ${
+                                                    line.type === 'added' ? 'bg-[#00ff44]/15 text-[#4ade80] border-l-2 border-[#10b981]' :
+                                                    line.type === 'placeholder' ? 'bg-[#1a1a1a]/40 opacity-20 select-none' :
+                                                    'text-[#999]'
+                                                  }`}
+                                                >
+                                                  <span className="text-[8px] text-[#444] w-2 text-right select-none inline-block mt-0.5">
+                                                    {line.type === 'added' ? '+' : ' '}
+                                                  </span>
+                                                  <span className="whitespace-pre-wrap">{line.type === 'placeholder' ? ' ' : (line.value || ' ')}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })() : (
+                              <div className="text-[10px] text-[#444] italic text-center py-24 border border-dashed border-[#1a1a1a]">
+                                Select a version on the left sidebar to compare architectural prompts...
+                              </div>
+                            )}
                           </div>
                         </div>
                       </motion.div>
@@ -2085,7 +2748,7 @@ ${instructionSet.finalPrompt}
                                   <div className="w-10 h-10 bg-[#00ff00]/10 border border-[#00ff00]/30 rounded-full flex items-center justify-center text-[#00ff00]">
                                     <ShieldAlert size={20} />
                                   </div>
-                                  <h3 className="text-xl font-bold uppercase tracking-widest text-[#e0e0e0]">Constitutional Governance Certificate</h3>
+                                  <h3 className="text-xl font-bold uppercase tracking-widest text-[#e0e0e0]">C-RSP (Constitutionally-Regulated Single Pass) Certificate</h3>
                                 </div>
                                 <div className="flex gap-4 text-[10px] text-[#666] uppercase font-mono tracking-tighter">
                                   <span>ID: {crypto.randomUUID().split('-')[0].toUpperCase()}</span>
@@ -2273,6 +2936,22 @@ ${instructionSet.finalPrompt}
                         )}
                       </motion.div>
                     )}
+                    {activeTab === 'sheets_sync' && (
+                      <motion.div 
+                        key="sheets_sync"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                      >
+                        <SheetsSync 
+                          instructionSet={instructionSet}
+                          audit={audit}
+                          stress={stress}
+                          intent={intent.raw}
+                          targetModel={intent.targetModel}
+                        />
+                      </motion.div>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -2331,6 +3010,53 @@ ${instructionSet.finalPrompt}
         </div>
       </main>
 
+      {/* Settings Modal (Choice & Control / Privacy) */}
+      <AnimatePresence>
+        {showSettingsPanel && (
+          <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#050505] border border-[#1a1a1a] p-8 max-w-md w-full shadow-2xl relative"
+            >
+              <button
+                onClick={() => setShowSettingsPanel(false)}
+                className="absolute top-4 right-4 text-zinc-500 hover:text-white"
+              >
+                ✕
+              </button>
+              <h2 className="text-xl font-bold uppercase tracking-widest text-[#00ff00] mb-4">Accessibility & Data</h2>
+              <div className="space-y-6">
+                <div className="bg-[#0a0a0a] p-4 border border-[#1a1a1a]">
+                  <h3 className="text-sm font-bold uppercase mb-2 flex items-center gap-2"><Settings size={14}/> Privacy & Consent</h3>
+                  <p className="text-xs text-zinc-400 mb-4">You have full control over your data. If enabled, minimal anonymized activity is collected for IRB-approved research on AI interactions. You can opt out at any time.</p>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={isDataCollectionEnabled} 
+                      onChange={(e) => setIsDataCollectionEnabled(e.target.checked)} 
+                      className="accent-[#00ff00] w-4 h-4"
+                    />
+                    <span className="text-sm font-bold uppercase text-white">Enable Data Collection</span>
+                  </label>
+                  {!isDataCollectionEnabled && <p className="text-[10px] text-red-500 mt-2 font-bold uppercase">Data collection is paused.</p>}
+                </div>
+                
+                <div className="bg-[#0a0a0a] p-4 border border-[#1a1a1a]">
+                  <h3 className="text-sm font-bold uppercase mb-2 flex items-center gap-2"><Eye size={14}/> Sensory Accommodations</h3>
+                  <p className="text-xs text-zinc-400 mb-3">Adjust the interface to match your sensory profile.</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => setIntent(prev => ({ ...prev, theme: ThemeType.NEURO_FOCUS }))} className={`px-3 py-1 text-xs border ${intent.theme === ThemeType.NEURO_FOCUS ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-[#333] hover:border-[#666] text-zinc-400'}`}>Neuro-Focus (Low contrast)</button>
+                    <button onClick={() => setIntent(prev => ({ ...prev, theme: ThemeType.HIGH_CONTRAST }))} className={`px-3 py-1 text-xs border ${intent.theme === ThemeType.HIGH_CONTRAST ? 'border-white bg-white/10 text-white' : 'border-[#333] hover:border-[#666] text-zinc-400'}`}>High Contrast</button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Global Error Toast */}
       <AnimatePresence>
         {error && (
@@ -2349,6 +3075,32 @@ ${instructionSet.finalPrompt}
               <RefreshCw size={14} />
             </button>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Universal Pause Overlay */}
+      <AnimatePresence>
+        {isGlobalPaused && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex flex-col items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="flex flex-col items-center gap-4 text-center"
+            >
+              <PauseCircle size={64} className="text-[#00ff00] animate-pulse" />
+              <h2 className="text-2xl font-bold uppercase tracking-[0.3em] text-white">Session Paused</h2>
+              <p className="text-sm text-zinc-400 max-w-sm">
+                Executive function pause is active. Timers and data collection are suspended. Take a break.
+              </p>
+              <button
+                onClick={() => setIsGlobalPaused(false)}
+                className="mt-4 px-6 py-3 bg-[#00ff00] text-[#000] font-bold uppercase tracking-widest text-xs hover:bg-[#00cc00] transition-colors shadow-[0_0_15px_rgba(0,255,0,0.3)]"
+              >
+                Resume Session
+              </button>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
